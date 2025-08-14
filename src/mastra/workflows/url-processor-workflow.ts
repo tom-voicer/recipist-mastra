@@ -1,5 +1,6 @@
 import { createStep, createWorkflow } from "@mastra/core/workflows";
 import { z } from "zod";
+import { cleanHtml } from "../../utils/htmlCleaner";
 
 // Function to check if a string is a valid URL
 function isValidUrl(input: string): boolean {
@@ -64,6 +65,66 @@ const processUrlStep = createStep({
   },
 });
 
+// Step to clean HTML and convert to markdown
+const cleanAndConvertStep = createStep({
+  id: "clean-and-convert",
+  description: "Cleans HTML content and converts it to markdown format",
+  inputSchema: z.object({
+    htmlContent: z.string().describe("The HTML content to clean and convert"),
+    isUrl: z.boolean().describe("Whether the original input was a valid URL"),
+  }),
+  outputSchema: z.object({
+    result: z
+      .string()
+      .describe("Either the cleaned markdown content or error message"),
+    cleanedContent: z
+      .string()
+      .optional()
+      .describe("The cleaned and converted markdown content"),
+    isUrl: z.boolean().describe("Whether the original input was a valid URL"),
+  }),
+  execute: async ({ inputData }) => {
+    if (!inputData?.htmlContent || !inputData?.isUrl) {
+      return {
+        result: inputData?.htmlContent || "No content to process",
+        isUrl: inputData?.isUrl || false,
+      };
+    }
+
+    const { htmlContent, isUrl } = inputData;
+
+    // Only process if it was a valid URL
+    if (!isUrl) {
+      return {
+        result: htmlContent,
+        isUrl: false,
+      };
+    }
+
+    try {
+      // Clean HTML and convert to markdown
+      const cleanedContent = cleanHtml(htmlContent, {
+        removeAttributes: true,
+        removeEmptyElements: true,
+        normalizeWhitespace: true,
+        removeComments: true,
+        convertToMarkdown: true,
+      });
+
+      return {
+        result: cleanedContent,
+        cleanedContent: cleanedContent,
+        isUrl: true,
+      };
+    } catch (error) {
+      return {
+        result: `Error cleaning HTML: ${error instanceof Error ? error.message : "Unknown error"}`,
+        isUrl: true,
+      };
+    }
+  },
+});
+
 // Create the URL processor workflow
 const urlProcessorWorkflow = createWorkflow({
   id: "url-processor-workflow",
@@ -71,10 +132,22 @@ const urlProcessorWorkflow = createWorkflow({
     input: z.string().describe("The string input to check if it is a URL"),
   }),
   outputSchema: z.object({
-    result: z.string().describe("Either the HTML content or error message"),
+    result: z
+      .string()
+      .describe("Either the cleaned markdown content or error message"),
+    cleanedContent: z
+      .string()
+      .optional()
+      .describe("The cleaned and converted markdown content"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
   }),
-}).then(processUrlStep);
+})
+  .then(processUrlStep)
+  .map(async ({ inputData }) => ({
+    htmlContent: inputData.result,
+    isUrl: inputData.isUrl,
+  }))
+  .then(cleanAndConvertStep);
 
 urlProcessorWorkflow.commit();
 

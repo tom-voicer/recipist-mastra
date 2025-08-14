@@ -1,18 +1,21 @@
 /**
  * HTML Cleaner Utility
  *
- * This utility provides a high-performance HTML cleaning function that:
+ * This utility provides a string-based HTML cleaning function that:
  * - Removes all scripts, styles, and noscript elements
  * - Strips all HTML attributes from elements
  * - Removes comments and ALL empty elements
  * - Normalizes whitespace for clean text content
  * - Optionally converts HTML to Markdown format
+ *
+ * Note: This implementation uses regex and string manipulation,
+ * not DOM operations, making it suitable for server-side use.
  */
 
 import { convertHtmlToMarkdown } from "./markdownConverter";
 
 // Tags to completely remove (including their content)
-const TAGS_TO_REMOVE = new Set(["script", "style", "noscript"]);
+const TAGS_TO_REMOVE = ["script", "style", "noscript"];
 
 export interface CleanHtmlOptions {
   /**
@@ -65,132 +68,112 @@ export function cleanHtml(
     convertToMarkdown = false,
   } = options;
 
-  // Create a temporary container to work with
-  const container = document.createElement("div");
-  container.innerHTML = html;
+  let cleanedHtml = html;
 
   // Step 1: Remove unwanted elements (scripts, styles, noscripts)
-  TAGS_TO_REMOVE.forEach((tagName) => {
-    const elements = container.getElementsByTagName(tagName);
-    // Convert to array and remove in reverse to avoid live collection issues
-    Array.from(elements)
-      .reverse()
-      .forEach((el) => el.remove());
-  });
+  cleanedHtml = removeUnwantedTags(cleanedHtml);
 
   // Step 2: Remove comments if requested
   if (removeComments) {
-    removeCommentNodes(container);
+    cleanedHtml = removeHtmlComments(cleanedHtml);
   }
 
   // Step 3: Remove attributes from all elements if requested
   if (removeAttributes) {
-    const allElements = container.getElementsByTagName("*");
-    Array.from(allElements).forEach((element) => {
-      // Remove all attributes
-      Array.from(element.attributes).forEach((attr) => {
-        element.removeAttribute(attr.name);
-      });
-    });
+    cleanedHtml = removeAllAttributes(cleanedHtml);
   }
 
   // Step 4: Normalize whitespace if requested
   if (normalizeWhitespace) {
-    normalizeTextContent(container);
+    cleanedHtml = normalizeWhitespace_(cleanedHtml);
   }
 
   // Step 5: Remove empty elements if requested (must be done after whitespace normalization)
   if (removeEmptyElements) {
-    removeEmptyNodes(container);
+    cleanedHtml = removeEmptyElements_(cleanedHtml);
   }
 
   // Step 6: Convert to Markdown if requested
   if (convertToMarkdown) {
-    return convertHtmlToMarkdown(container.innerHTML);
+    return convertHtmlToMarkdown(cleanedHtml);
   }
 
-  return container.innerHTML;
+  return cleanedHtml;
 }
 
 /**
- * Removes all comment nodes from an element and its descendants
+ * Removes unwanted tags and their content using regex
  */
-function removeCommentNodes(element: Element): void {
-  const iterator = document.createNodeIterator(
-    element,
-    NodeFilter.SHOW_COMMENT
-  );
+function removeUnwantedTags(html: string): string {
+  let result = html;
 
-  const comments: Comment[] = [];
-  let node: Node | null;
+  // Remove each unwanted tag type
+  TAGS_TO_REMOVE.forEach((tagName) => {
+    // Regex to match opening and closing tags with any content in between
+    // Uses non-greedy matching and handles nested tags
+    const regex = new RegExp(`<${tagName}[^>]*>.*?<\/${tagName}>`, "gis");
+    result = result.replace(regex, "");
 
-  // Collect all comments first to avoid iterator invalidation
-  while ((node = iterator.nextNode())) {
-    comments.push(node as Comment);
-  }
-
-  // Remove all collected comments
-  comments.forEach((comment) => comment.remove());
-}
-
-/**
- * Normalizes whitespace in all text nodes
- */
-function normalizeTextContent(element: Element): void {
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-
-  const textNodes: Text[] = [];
-  let node: Node | null;
-
-  // Collect all text nodes
-  while ((node = walker.nextNode())) {
-    textNodes.push(node as Text);
-  }
-
-  textNodes.forEach((textNode) => {
-    const text = textNode.textContent || "";
-
-    // Replace multiple whitespaces with single space
-    const normalizedText = text.replace(/\s+/g, " ");
-
-    // Remove the text node if it's only whitespace
-    if (normalizedText.trim() === "") {
-      textNode.remove();
-    } else {
-      textNode.textContent = normalizedText;
-    }
+    // Also remove self-closing versions
+    const selfClosingRegex = new RegExp(`<${tagName}[^>]*\/>`, "gi");
+    result = result.replace(selfClosingRegex, "");
   });
+
+  return result;
 }
 
 /**
- * Removes ALL empty elements
- * Works from deepest elements to shallowest to avoid skipping
+ * Removes HTML comments using regex
  */
-function removeEmptyNodes(element: Element): void {
-  // Get all elements and process from deepest to shallowest
-  const allElements = Array.from(element.getElementsByTagName("*"));
-
-  // Process in reverse order (deepest first)
-  for (let i = allElements.length - 1; i >= 0; i--) {
-    const el = allElements[i];
-
-    // Skip if element was already removed
-    if (!el.parentNode) continue;
-
-    // Check if element is empty
-    const hasNoChildren = el.children.length === 0;
-    const hasNoText = !el.textContent || el.textContent.trim() === "";
-
-    // Remove ALL empty elements
-    if (hasNoChildren && hasNoText) {
-      el.remove();
-    }
-  }
+function removeHtmlComments(html: string): string {
+  // Remove HTML comments <!-- ... -->
+  return html.replace(/<!--[\s\S]*?-->/g, "");
 }
 
 /**
- * Utility function to clean the current document's body HTML and optionally convert to Markdown
+ * Removes all attributes from HTML elements using regex
  */
-export function cleanBodyHtml(options?: CleanHtmlOptions): string {
-  return cleanHtml(document.body.innerHTML, options);
+function removeAllAttributes(html: string): string {
+  // Regex to match any HTML tag with attributes and remove the attributes
+  // Preserves the tag name but removes everything between the tag name and >
+  return html.replace(/<([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, "<$1>");
+}
+
+/**
+ * Normalizes whitespace in HTML content
+ */
+function normalizeWhitespace_(html: string): string {
+  return (
+    html
+      // Replace multiple consecutive whitespace characters with a single space
+      .replace(/\s+/g, " ")
+      // Remove whitespace around HTML tags
+      .replace(/>\s+</g, "><")
+      // Trim leading and trailing whitespace
+      .trim()
+  );
+}
+
+/**
+ * Removes empty HTML elements using regex
+ * This function runs multiple passes to handle nested empty elements
+ */
+function removeEmptyElements_(html: string): string {
+  let result = html;
+  let previousLength;
+
+  // Keep removing empty elements until no more can be removed
+  do {
+    previousLength = result.length;
+
+    // Remove empty elements with no content (self-closing or with only whitespace)
+    // This regex matches opening tag, optional whitespace, and closing tag
+    result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)>\s*<\/\1>/g, "");
+
+    // Remove elements that contain only whitespace or other empty elements
+    // This is a simplified approach - for more complex cases, multiple passes help
+    result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)>\s*<\/\1>/g, "");
+  } while (result.length < previousLength); // Continue until no more changes
+
+  return result;
 }
