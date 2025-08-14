@@ -1,6 +1,24 @@
 import { createStep, createWorkflow } from "@mastra/core/workflows";
 import { z } from "zod";
 import { cleanHtml } from "../../utils/htmlCleaner";
+import { openai } from "@ai-sdk/openai";
+import { Agent } from "@mastra/core/agent";
+
+// Create the recipe extraction agent
+const recipeExtractionAgent = new Agent({
+  name: "recipe-extractor",
+  description:
+    "Extracts recipe data from markdown content and filters out noise",
+  instructions: `You are a recipe extraction specialist. Your task is to:
+1. Analyze the provided markdown content for recipe information
+2. If you find a recipe, extract ONLY the recipe data including: title, ingredients, instructions, cooking time, servings, etc.
+3. Remove all website noise like advertisements, navigation, comments, related articles, etc.
+4. Format the recipe in a clean, structured markdown format
+5. If no recipe is found in the content, respond with exactly: "this is not a recipe"
+
+Focus only on the actual recipe content and ignore everything else on the page.`,
+  model: openai("gpt-4o-mini"),
+});
 
 // Function to check if a string is a valid URL
 function isValidUrl(input: string): boolean {
@@ -125,6 +143,77 @@ const cleanAndConvertStep = createStep({
   },
 });
 
+// Step to extract recipe data using AI/LLM
+const recipeExtractionStep = createStep({
+  id: "recipe-extraction",
+  description:
+    "Extracts recipe data from markdown content using AI, filtering out noise",
+  inputSchema: z.object({
+    result: z.string().describe("The markdown content to analyze for recipes"),
+    cleanedContent: z
+      .string()
+      .optional()
+      .describe("The cleaned and converted markdown content"),
+    isUrl: z.boolean().describe("Whether the original input was a valid URL"),
+  }),
+  outputSchema: z.object({
+    result: z
+      .string()
+      .describe("Either the extracted recipe data or 'this is not a recipe'"),
+    recipeData: z
+      .string()
+      .optional()
+      .describe("The extracted recipe data if found"),
+    isUrl: z.boolean().describe("Whether the original input was a valid URL"),
+    isRecipe: z.boolean().describe("Whether recipe data was found"),
+  }),
+  execute: async ({ inputData, mastra }) => {
+    if (!inputData?.isUrl || !inputData?.cleanedContent) {
+      return {
+        result: inputData?.result || "No content to process",
+        isUrl: inputData?.isUrl || false,
+        isRecipe: false,
+      };
+    }
+
+    const { cleanedContent } = inputData;
+
+    try {
+      // Get the recipe extraction agent from the mastra instance
+      const agent = mastra?.getAgent("recipe-extractor");
+      if (!agent) {
+        throw new Error("Recipe extraction agent not found");
+      }
+
+      // Create prompt for the AI agent
+      const prompt = `Please analyze the following markdown content and extract any recipe information. Remove all website noise and focus only on the recipe data:
+
+${cleanedContent}`;
+
+      // Generate response from the agent
+      const response = await agent.generate([
+        { role: "user", content: prompt },
+      ]);
+
+      const extractedContent = response.text.trim();
+      const isRecipe = extractedContent !== "this is not a recipe";
+
+      return {
+        result: extractedContent,
+        recipeData: isRecipe ? extractedContent : undefined,
+        isUrl: true,
+        isRecipe,
+      };
+    } catch (error) {
+      return {
+        result: `Error extracting recipe: ${error instanceof Error ? error.message : "Unknown error"}`,
+        isUrl: true,
+        isRecipe: false,
+      };
+    }
+  },
+});
+
 // Create the URL processor workflow
 const urlProcessorWorkflow = createWorkflow({
   id: "url-processor-workflow",
@@ -134,12 +223,15 @@ const urlProcessorWorkflow = createWorkflow({
   outputSchema: z.object({
     result: z
       .string()
-      .describe("Either the cleaned markdown content or error message"),
-    cleanedContent: z
+      .describe(
+        "Either the extracted recipe data or 'this is not a recipe' or error message"
+      ),
+    recipeData: z
       .string()
       .optional()
-      .describe("The cleaned and converted markdown content"),
+      .describe("The extracted recipe data if found"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    isRecipe: z.boolean().describe("Whether recipe data was found"),
   }),
 })
   .then(processUrlStep)
@@ -147,8 +239,14 @@ const urlProcessorWorkflow = createWorkflow({
     htmlContent: inputData.result,
     isUrl: inputData.isUrl,
   }))
-  .then(cleanAndConvertStep);
+  .then(cleanAndConvertStep)
+  .map(async ({ inputData }) => ({
+    result: inputData.result,
+    cleanedContent: inputData.cleanedContent,
+    isUrl: inputData.isUrl,
+  }))
+  .then(recipeExtractionStep);
 
 urlProcessorWorkflow.commit();
 
-export { urlProcessorWorkflow };
+export { urlProcessorWorkflow, recipeExtractionAgent };
