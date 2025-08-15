@@ -18,13 +18,24 @@ const recipeExtractionAgent = new Agent({
 6. Format the recipe in a clean, structured markdown format
 7. If no recipe is found in the content, respond with exactly: "this is not a recipe"
 
+SERVING INFORMATION REQUIREMENTS:
+- ALWAYS include serving information at the top of the recipe (after the title)
+- Include "**Serves:** X people" where X is the number of people the recipe serves
+- If the recipe makes individual items (like cupcakes, muffins, cookies, etc.), also include "**Makes:** X items" where X is the number of individual pieces
+- If serving information is not available in the source, make a reasonable estimate based on ingredient quantities
+- Examples:
+  - "**Serves:** 4 people"
+  - "**Makes:** 12 cupcakes"
+  - "**Serves:** 6 people | **Makes:** 24 cookies"
+
 IMPORTANT INSTRUCTIONS:
 - If a target language is specified, translate ALL text in the recipe to that language
 - If target units are specified, convert ALL measurements in ingredients to those units (use appropriate conversion factors)
 - Maintain the original recipe structure and formatting
 - Focus only on the actual recipe content and ignore everything else on the page
-- Be accurate with unit conversions (e.g., 1 cup flour ≈ 120g, 1 tablespoon ≈ 15ml)`,
-  model: openai("gpt-4o-mini"),
+- Be accurate with unit conversions (e.g., 1 cup flour ≈ 120g, 1 tablespoon ≈ 15ml)
+- ALWAYS include serving information even if you need to estimate it`,
+  model: openai("gpt-4.1"),
 });
 
 // Function to check if a string is a valid URL
