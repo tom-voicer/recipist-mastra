@@ -1,11 +1,11 @@
 import { Mastra } from "@mastra/core/mastra";
 import { PinoLogger } from "@mastra/loggers";
 import { LibSQLStore } from "@mastra/libsql";
-import { urlProcessorWorkflow } from "./workflows/url-processor-workflow";
+import { recipeExtractorWorkflow } from "./workflows/recipe-extractor-workflow";
 import { recipeExtractionAgent, imageExtractionAgent } from "./agents";
 
 export const mastra = new Mastra({
-  workflows: { urlProcessorWorkflow },
+  workflows: { recipeExtractorWorkflow },
   agents: {
     "recipe-extractor": recipeExtractionAgent,
     "image-extractor": imageExtractionAgent,

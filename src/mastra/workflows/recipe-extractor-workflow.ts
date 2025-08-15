@@ -835,9 +835,9 @@ const endStep = createStep({
   },
 });
 
-// Create the URL processor workflow with social provider branching
-const urlProcessorWorkflow = createWorkflow({
-  id: "url-processor-workflow",
+// Create the recipe extractor workflow with social provider branching
+const recipeExtractorWorkflow = createWorkflow({
+  id: "recipe-extractor-workflow",
   inputSchema: workflowInputSchema,
   outputSchema: workflowOutputSchema,
 })
@@ -850,6 +850,6 @@ const urlProcessorWorkflow = createWorkflow({
   .then(recipeExtractionStep)
   .then(endStep);
 
-urlProcessorWorkflow.commit();
+recipeExtractorWorkflow.commit();
 
-export { urlProcessorWorkflow };
+export { recipeExtractorWorkflow };
