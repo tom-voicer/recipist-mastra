@@ -107,7 +107,7 @@ export const mastra = new Mastra({
               throw new Error("Recipe extractor workflow not found");
             }
 
-            const run = await workflow.createRun();
+            const run = await workflow.createRunAsync();
             const result = await run.start({
               inputData: workflowInput,
             });
