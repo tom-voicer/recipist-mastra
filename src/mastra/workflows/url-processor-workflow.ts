@@ -59,6 +59,31 @@ IMPORTANT INSTRUCTIONS:
   model: openai("gpt-4.1"),
 });
 
+// Create the image extraction agent
+const imageExtractionAgent = new Agent({
+  name: "image-extractor",
+  description: "Extracts the main recipe image URL from markdown content",
+  instructions: `You are an image extraction specialist. Your task is to:
+1. Analyze the provided markdown content to find the main recipe image
+2. Look for image references in markdown format: ![alt text](image_url) or ![](image_url)
+3. Focus on images that are likely to be the primary recipe photo based on:
+   - Context within the content (positioned near recipe title, ingredients, or instructions)
+   - Alt text descriptions that relate to the recipe or food
+   - File names that suggest they are recipe/food images
+   - Avoid images that are clearly logos, advertisements, author photos, or navigation elements
+4. Return ONLY the image URL from the markdown image syntax
+5. If no suitable recipe image is found, respond with exactly: "no image found"
+
+IMPORTANT INSTRUCTIONS:
+- Extract the complete URL from markdown image syntax: ![alt](URL) -> return URL
+- Prefer images with descriptive alt text related to food/recipes
+- Ignore social media sharing images, logos, and advertising banners
+- Look for images positioned within recipe content sections
+- If multiple candidate images exist, choose the one most likely to be the main recipe photo
+- Return only the URL string, no additional text or formatting`,
+  model: openai("gpt-4o-mini"),
+});
+
 // Function to check if a string is a valid URL
 function isValidUrl(input: string): boolean {
   try {
@@ -548,6 +573,145 @@ const processUrlStep = createStep({
   },
 });
 
+// Step to extract recipe image from markdown content
+const imageExtractionStep = createStep({
+  id: "image-extraction",
+  description:
+    "Extracts the main recipe image URL from markdown content using AI",
+  inputSchema: z.object({
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route"),
+    result: z.string().describe("Previous result"),
+    cleanedContent: z
+      .string()
+      .optional()
+      .describe("The markdown content to analyze"),
+    imageUrl: z.string().optional().describe("The recipe image URL"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z.string().optional().describe("The original URL"),
+    language: z.string().optional(),
+    units: z.string().optional(),
+  }),
+  outputSchema: z.object({
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route"),
+    result: z.string().describe("Success message or error"),
+    cleanedContent: z.string().optional().describe("The markdown content"),
+    imageUrl: z.string().optional().describe("The extracted recipe image URL"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z.string().optional().describe("The original URL"),
+    language: z.string().optional(),
+    units: z.string().optional(),
+  }),
+  execute: async ({ inputData, mastra }) => {
+    if (!inputData) {
+      throw new Error("Input data not found");
+    }
+
+    const {
+      route,
+      result,
+      cleanedContent,
+      imageUrl: inputImageUrl,
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    } = inputData;
+
+    // Skip image extraction for social providers and errors
+    if (route === "social" || route === "error") {
+      return {
+        route,
+        result,
+        cleanedContent,
+        imageUrl: inputImageUrl,
+        isSocial,
+        provider,
+        isUrl,
+        originalUrl,
+        language,
+        units,
+      };
+    }
+
+    // Only extract image for normal route with markdown content
+    if (route === "normal" && cleanedContent) {
+      try {
+        // Get the image extraction agent from the mastra instance
+        const agent = mastra?.getAgent("image-extractor");
+        if (!agent) {
+          throw new Error("Image extraction agent not found");
+        }
+
+        // Generate response from the agent
+        const response = await agent.generate([
+          {
+            role: "user",
+            content: `Please analyze the following markdown content and extract the main recipe image URL:
+
+${cleanedContent}`,
+          },
+        ]);
+
+        const extractedImageUrl = response.text.trim();
+        const imageUrl =
+          extractedImageUrl !== "no image found"
+            ? extractedImageUrl
+            : undefined;
+        return {
+          route,
+          result: imageUrl ? "image_extracted" : "no_image_found",
+          cleanedContent,
+          imageUrl,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
+          language,
+          units,
+        };
+      } catch (error) {
+        // Don't fail the whole workflow if image extraction fails, just continue without image
+        return {
+          route,
+          result,
+          cleanedContent,
+          imageUrl: undefined,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
+          language,
+          units,
+        };
+      }
+    }
+
+    // Pass through if no markdown content
+    return {
+      route,
+      result,
+      cleanedContent,
+      imageUrl: inputImageUrl,
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    };
+  },
+});
+
 // Step to clean HTML and convert to markdown
 const cleanAndConvertStep = createStep({
   id: "clean-and-convert",
@@ -558,6 +722,7 @@ const cleanAndConvertStep = createStep({
       .describe("The processing route"),
     result: z.string().describe("Previous result"),
     htmlContent: z.string().optional().describe("The HTML content to clean"),
+    imageUrl: z.string().optional().describe("The recipe image URL"),
     isSocial: z.boolean().describe("Whether the URL is from a social provider"),
     provider: z.string().optional().describe("The social media provider name"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
@@ -574,6 +739,7 @@ const cleanAndConvertStep = createStep({
       .string()
       .optional()
       .describe("The cleaned markdown content"),
+    imageUrl: z.string().optional().describe("The recipe image URL"),
     isSocial: z.boolean().describe("Whether the URL is from a social provider"),
     provider: z.string().optional().describe("The social media provider name"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
@@ -590,6 +756,7 @@ const cleanAndConvertStep = createStep({
       route,
       result,
       htmlContent,
+      imageUrl,
       isSocial,
       provider,
       isUrl,
@@ -603,6 +770,7 @@ const cleanAndConvertStep = createStep({
       return {
         route,
         result,
+        imageUrl,
         isSocial,
         provider,
         isUrl,
@@ -627,6 +795,7 @@ const cleanAndConvertStep = createStep({
           route,
           result: "html_cleaned",
           cleanedContent,
+          imageUrl,
           isSocial,
           provider,
           isUrl,
@@ -638,6 +807,7 @@ const cleanAndConvertStep = createStep({
         return {
           route: "error" as const,
           result: `Error cleaning HTML: ${error instanceof Error ? error.message : "Unknown error"}`,
+          imageUrl,
           isSocial,
           provider,
           isUrl,
@@ -652,6 +822,7 @@ const cleanAndConvertStep = createStep({
     return {
       route,
       result,
+      imageUrl,
       isSocial,
       provider,
       isUrl,
@@ -676,6 +847,7 @@ const recipeExtractionStep = createStep({
       .string()
       .optional()
       .describe("The markdown content to analyze"),
+    imageUrl: z.string().optional().describe("The recipe image URL"),
     isSocial: z.boolean().describe("Whether the URL is from a social provider"),
     provider: z.string().optional().describe("The social media provider name"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
@@ -694,6 +866,7 @@ const recipeExtractionStep = createStep({
       .string()
       .optional()
       .describe("The extracted recipe data if found"),
+    imageUrl: z.string().optional().describe("The recipe image URL"),
     isRecipe: z.boolean().describe("Whether recipe data was found"),
     isSocial: z.boolean().describe("Whether the URL is from a social provider"),
     provider: z.string().optional().describe("The social media provider name"),
@@ -719,6 +892,7 @@ const recipeExtractionStep = createStep({
       route,
       result,
       cleanedContent,
+      imageUrl,
       isSocial,
       provider,
       isUrl,
@@ -732,6 +906,7 @@ const recipeExtractionStep = createStep({
       return {
         route,
         result,
+        imageUrl,
         isRecipe: false,
         isSocial,
         provider,
@@ -827,6 +1002,7 @@ ${cleanedContent}`;
           route,
           result: extractedContent,
           recipeData: isRecipe ? cleanedRecipeData : undefined,
+          imageUrl,
           isRecipe,
           isSocial,
           provider,
@@ -847,6 +1023,7 @@ ${cleanedContent}`;
         return {
           route: "error" as const,
           result: `Error extracting recipe: ${error instanceof Error ? error.message : "Unknown error"}`,
+          imageUrl,
           isRecipe: false,
           isSocial,
           provider,
@@ -863,6 +1040,7 @@ ${cleanedContent}`;
     return {
       route,
       result,
+      imageUrl,
       isRecipe: false,
       isSocial,
       provider,
@@ -996,6 +1174,7 @@ const endStep = createStep({
       .describe("The processing route"),
     result: z.string().describe("The final result"),
     recipeData: z.string().optional().describe("The recipe data if any"),
+    imageUrl: z.string().optional().describe("The recipe image URL"),
     isRecipe: z.boolean().describe("Whether recipe was found"),
     isSocial: z.boolean().describe("Whether from social provider"),
     provider: z.string().optional().describe("Social provider name"),
@@ -1015,6 +1194,7 @@ const endStep = createStep({
   outputSchema: z.object({
     result: z.string().describe("Final formatted result"),
     recipeData: z.string().optional().describe("The recipe data if found"),
+    imageUrl: z.string().optional().describe("The recipe image URL"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
     isRecipe: z.boolean().describe("Whether recipe data was found"),
     isSocial: z
@@ -1073,6 +1253,7 @@ const endStep = createStep({
     return {
       result: inputData.result,
       recipeData: inputData.recipeData,
+      imageUrl: inputData.imageUrl,
       isUrl: inputData.isUrl,
       isRecipe: inputData.isRecipe,
       isSocial: inputData.isSocial,
@@ -1120,6 +1301,7 @@ const urlProcessorWorkflow = createWorkflow({
       .string()
       .optional()
       .describe("The extracted recipe data if found"),
+    imageUrl: z.string().optional().describe("The recipe image URL"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
     isRecipe: z.boolean().describe("Whether recipe data was found"),
     isSocial: z
@@ -1174,9 +1356,10 @@ const urlProcessorWorkflow = createWorkflow({
   .then(routerStep)
   .then(processUrlStep)
   .then(cleanAndConvertStep)
+  .then(imageExtractionStep)
   .then(recipeExtractionStep)
   .then(endStep);
 
 urlProcessorWorkflow.commit();
 
-export { urlProcessorWorkflow, recipeExtractionAgent };
+export { urlProcessorWorkflow, recipeExtractionAgent, imageExtractionAgent };

@@ -131,12 +131,20 @@ function removeHtmlComments(html: string): string {
 }
 
 /**
- * Removes all attributes from HTML elements using regex
+ * Removes all attributes from HTML elements using regex, except src attributes on img tags
  */
 function removeAllAttributes(html: string): string {
-  // Regex to match any HTML tag with attributes and remove the attributes
-  // Preserves the tag name but removes everything between the tag name and >
-  return html.replace(/<([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, "<$1>");
+  return html.replace(/<([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, (match, tagName) => {
+    // For img tags, preserve only the src attribute
+    if (tagName.toLowerCase() === "img") {
+      const srcMatch = match.match(/src\s*=\s*["']([^"']*)["']/i);
+      if (srcMatch) {
+        return `<${tagName} src="${srcMatch[1]}">`;
+      }
+    }
+    // For all other tags, remove all attributes
+    return `<${tagName}>`;
+  });
 }
 
 /**

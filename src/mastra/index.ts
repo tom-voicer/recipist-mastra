@@ -4,11 +4,15 @@ import { LibSQLStore } from "@mastra/libsql";
 import {
   urlProcessorWorkflow,
   recipeExtractionAgent,
+  imageExtractionAgent,
 } from "./workflows/url-processor-workflow";
 
 export const mastra = new Mastra({
   workflows: { urlProcessorWorkflow },
-  agents: { "recipe-extractor": recipeExtractionAgent },
+  agents: {
+    "recipe-extractor": recipeExtractionAgent,
+    "image-extractor": imageExtractionAgent,
+  },
   storage: new LibSQLStore({
     // stores telemetry, evals, ... into memory storage, if it needs to persist, change to file:../mastra.db
     url: ":memory:",
