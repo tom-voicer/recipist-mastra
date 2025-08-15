@@ -565,10 +565,6 @@ const recipeExtractionStep = createStep({
     timeMinutes: z.number().optional().describe("Total time in minutes"),
     servesPeople: z.number().optional().describe("Number of people served"),
     makesItems: z.string().optional().describe("Number of items made"),
-    recipeLanguage: z
-      .string()
-      .optional()
-      .describe("The language used in the recipe"),
     unitsLength: z.string().optional().describe("Primary length units"),
     unitsLiquid: z.string().optional().describe("Primary liquid units"),
     unitsWeight: z.string().optional().describe("Primary weight units"),
@@ -647,7 +643,6 @@ ${cleanedContent}`;
         let cleanedRecipeData = extractedContent;
 
         // Set user-requested parameters
-        const recipeLanguage = language || undefined;
         const unitsLength = units
           ? parseUnitsCategory(units, "length")
           : undefined;
@@ -696,7 +691,6 @@ ${cleanedContent}`;
           timeMinutes,
           servesPeople,
           makesItems,
-          recipeLanguage,
           unitsLength,
           unitsLiquid,
           unitsWeight,
@@ -863,7 +857,6 @@ const endStep = createStep({
     timeMinutes: z.number().optional(),
     servesPeople: z.number().optional(),
     makesItems: z.string().optional(),
-    recipeLanguage: z.string().optional(),
     unitsLength: z.string().optional(),
     unitsLiquid: z.string().optional(),
     unitsWeight: z.string().optional(),
@@ -897,10 +890,6 @@ const endStep = createStep({
       .string()
       .optional()
       .describe("Number of individual items made, or 'N/A' if not applicable"),
-    recipeLanguage: z
-      .string()
-      .optional()
-      .describe("The language used in the recipe"),
     unitsLength: z
       .string()
       .optional()
@@ -940,7 +929,6 @@ const endStep = createStep({
       timeMinutes: inputData.timeMinutes,
       servesPeople: inputData.servesPeople,
       makesItems: inputData.makesItems,
-      recipeLanguage: inputData.recipeLanguage,
       unitsLength: inputData.unitsLength,
       unitsLiquid: inputData.unitsLiquid,
       unitsWeight: inputData.unitsWeight,
@@ -1002,10 +990,6 @@ const urlProcessorWorkflow = createWorkflow({
       .string()
       .optional()
       .describe("Number of individual items made, or 'N/A' if not applicable"),
-    recipeLanguage: z
-      .string()
-      .optional()
-      .describe("The language used in the recipe"),
     unitsLength: z
       .string()
       .optional()
