@@ -69,6 +69,64 @@ function isValidUrl(input: string): boolean {
   }
 }
 
+// Function to detect social media providers from URL
+function detectSocialProvider(url: string): {
+  isSocial: boolean;
+  provider?: "tiktok" | "instagram" | "facebook" | "pinterest" | "x";
+  displayName?: string;
+} {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.toLowerCase();
+
+    // Remove 'www.' prefix if present
+    const cleanHostname = hostname.replace(/^www\./, "");
+
+    // Check for each social provider
+    if (cleanHostname.includes("tiktok.com")) {
+      return { isSocial: true, provider: "tiktok", displayName: "TikTok" };
+    }
+
+    if (cleanHostname.includes("instagram.com")) {
+      return {
+        isSocial: true,
+        provider: "instagram",
+        displayName: "Instagram",
+      };
+    }
+
+    if (
+      cleanHostname.includes("facebook.com") ||
+      cleanHostname.includes("fb.com")
+    ) {
+      return { isSocial: true, provider: "facebook", displayName: "Facebook" };
+    }
+
+    if (
+      cleanHostname.includes("pinterest.com") ||
+      cleanHostname.includes("pin.it")
+    ) {
+      return {
+        isSocial: true,
+        provider: "pinterest",
+        displayName: "Pinterest",
+      };
+    }
+
+    if (
+      cleanHostname.includes("twitter.com") ||
+      cleanHostname.includes("x.com") ||
+      cleanHostname.includes("t.co")
+    ) {
+      return { isSocial: true, provider: "x", displayName: "X (Twitter)" };
+    }
+
+    return { isSocial: false };
+  } catch {
+    return { isSocial: false };
+  }
+}
+
 // Function to parse user's units request into specific categories
 function parseUnitsCategory(
   units: string,
@@ -143,6 +201,98 @@ function parseUnitsCategory(
 
   return undefined;
 }
+
+// Step to check if URL is from a social media provider
+const socialProviderCheckStep = createStep({
+  id: "social-provider-check",
+  description:
+    "Checks if the URL is from a social media provider and routes accordingly",
+  inputSchema: z.object({
+    input: z
+      .string()
+      .describe(
+        "The string input to check if it is a URL from social provider"
+      ),
+    language: z
+      .string()
+      .optional()
+      .describe("Target language for recipe translation"),
+    units: z
+      .string()
+      .optional()
+      .describe("Target measurement units for ingredients"),
+  }),
+  outputSchema: z.object({
+    result: z.string().describe("Either routing instruction or error message"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z
+      .enum(["tiktok", "instagram", "facebook", "pinterest", "x"])
+      .optional()
+      .describe("The social media provider"),
+    displayName: z
+      .string()
+      .optional()
+      .describe("The display name of the social provider"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z
+      .string()
+      .optional()
+      .describe("The original URL that was processed"),
+    language: z
+      .string()
+      .optional()
+      .describe("Target language for recipe translation"),
+    units: z
+      .string()
+      .optional()
+      .describe("Target measurement units for ingredients"),
+  }),
+  execute: async ({ inputData }) => {
+    if (!inputData?.input) {
+      throw new Error("Input data not found");
+    }
+
+    const { input, language, units } = inputData;
+
+    // Check if the input is a valid URL
+    if (!isValidUrl(input)) {
+      return {
+        result: "this is not a url",
+        isSocial: false,
+        isUrl: false,
+        originalUrl: undefined,
+        language,
+        units,
+      };
+    }
+
+    // Check if URL is from a social provider
+    const socialCheck = detectSocialProvider(input);
+
+    if (socialCheck.isSocial) {
+      return {
+        result: "route_to_social",
+        isSocial: true,
+        provider: socialCheck.provider,
+        displayName: socialCheck.displayName,
+        isUrl: true,
+        originalUrl: input,
+        language,
+        units,
+      };
+    }
+
+    // Not a social provider, continue with normal flow
+    return {
+      result: "route_to_normal",
+      isSocial: false,
+      isUrl: true,
+      originalUrl: input,
+      language,
+      units,
+    };
+  },
+});
 
 // Step to check URL and fetch HTML content if valid
 const processUrlStep = createStep({
@@ -520,7 +670,268 @@ ${cleanedContent}`;
   },
 });
 
-// Create the URL processor workflow
+// Step to handle routing logic after social provider check
+const routingStep = createStep({
+  id: "routing-step",
+  description:
+    "Routes to appropriate processing based on social provider check",
+  inputSchema: z.object({
+    result: z.string().describe("The routing instruction"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z
+      .enum(["tiktok", "instagram", "facebook", "pinterest", "x"])
+      .optional()
+      .describe("The social media provider"),
+    displayName: z
+      .string()
+      .optional()
+      .describe("The display name of the social provider"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z
+      .string()
+      .optional()
+      .describe("The original URL that was processed"),
+    language: z
+      .string()
+      .optional()
+      .describe("Target language for recipe translation"),
+    units: z
+      .string()
+      .optional()
+      .describe("Target measurement units for ingredients"),
+  }),
+  outputSchema: z.object({
+    result: z
+      .string()
+      .describe(
+        "Either the extracted recipe data or 'this is not a recipe' or social provider message or error message"
+      ),
+    recipeData: z
+      .string()
+      .optional()
+      .describe("The extracted recipe data if found"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    isRecipe: z.boolean().describe("Whether recipe data was found"),
+    isSocial: z
+      .boolean()
+      .optional()
+      .describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
+    originalUrl: z
+      .string()
+      .optional()
+      .describe("The original URL that was processed"),
+    recipeName: z.string().optional().describe("The name/title of the recipe"),
+    timeMinutes: z
+      .number()
+      .optional()
+      .describe("Total time in minutes to make the recipe"),
+    servesPeople: z
+      .number()
+      .optional()
+      .describe("Number of people the recipe serves"),
+    makesItems: z
+      .string()
+      .optional()
+      .describe("Number of individual items made, or 'N/A' if not applicable"),
+    recipeLanguage: z
+      .string()
+      .optional()
+      .describe("The language used in the recipe"),
+    unitsLength: z
+      .string()
+      .optional()
+      .describe("Primary length units found in the recipe"),
+    unitsLiquid: z
+      .string()
+      .optional()
+      .describe("Primary liquid units found in the recipe"),
+    unitsWeight: z
+      .string()
+      .optional()
+      .describe("Primary weight units found in the recipe"),
+    language: z
+      .string()
+      .optional()
+      .describe("Target language used for recipe translation"),
+    units: z
+      .string()
+      .optional()
+      .describe("Target measurement units used for ingredients"),
+  }),
+  execute: async ({ inputData }) => {
+    if (!inputData) {
+      throw new Error("Input data not found");
+    }
+
+    const {
+      result,
+      isSocial,
+      provider,
+      displayName,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    } = inputData;
+
+    // Handle social provider routing
+    if (result === "route_to_social" && isSocial && provider && displayName) {
+      return {
+        result: `this url is from ${displayName}`,
+        isUrl: true,
+        isRecipe: false,
+        isSocial: true,
+        provider: displayName,
+        originalUrl,
+        language,
+        units,
+      };
+    }
+
+    // Handle invalid URL case
+    if (result === "this is not a url") {
+      return {
+        result: "this is not a url",
+        isUrl: false,
+        isRecipe: false,
+        originalUrl,
+        language,
+        units,
+      };
+    }
+
+    // Handle normal URL processing flow
+    if (result === "route_to_normal" && isUrl && originalUrl) {
+      try {
+        // Fetch HTML content
+        const response = await fetch(originalUrl);
+        if (!response.ok) {
+          return {
+            result: `Failed to fetch URL: ${response.status} ${response.statusText}`,
+            isUrl: true,
+            isRecipe: false,
+            originalUrl,
+            language,
+            units,
+          };
+        }
+
+        const htmlContent = await response.text();
+
+        // Clean HTML and convert to markdown
+        const cleanedContent = cleanHtml(htmlContent, {
+          removeAttributes: true,
+          removeEmptyElements: true,
+          normalizeWhitespace: true,
+          removeComments: true,
+          convertToMarkdown: true,
+        });
+
+        // Use the recipe extraction agent
+        const agent = recipeExtractionAgent;
+        let prompt = `Please analyze the following markdown content and extract any recipe information. Remove all website noise and focus only on the recipe data:
+
+${cleanedContent}`;
+
+        if (language) {
+          prompt += `\n\nIMPORTANT: Please translate the entire recipe (title, ingredients, instructions, and all text) to ${language}.`;
+        }
+
+        if (units) {
+          prompt += `\n\nIMPORTANT: Please convert all ingredient measurements to ${units} units. Use accurate conversion factors (e.g., 1 cup flour ≈ 120g, 1 tablespoon ≈ 15ml).`;
+        }
+
+        const response_ai = await agent.generate([
+          { role: "user", content: prompt },
+        ]);
+
+        const extractedContent = response_ai.text.trim();
+        const isRecipe = extractedContent !== "this is not a recipe";
+
+        // Parse structured metadata if this is a recipe
+        let recipeName: string | undefined;
+        let timeMinutes: number | undefined;
+        let servesPeople: number | undefined;
+        let makesItems: string | undefined;
+        let cleanedRecipeData = extractedContent;
+
+        const recipeLanguage = language || undefined;
+        const unitsLength = units
+          ? parseUnitsCategory(units, "length")
+          : undefined;
+        const unitsLiquid = units
+          ? parseUnitsCategory(units, "liquid")
+          : undefined;
+        const unitsWeight = units
+          ? parseUnitsCategory(units, "weight")
+          : undefined;
+
+        if (isRecipe) {
+          const metadataMatch = extractedContent.match(
+            /---RECIPE_METADATA---([\s\S]*?)---END_METADATA---/
+          );
+          if (metadataMatch) {
+            const metadataSection = metadataMatch[1];
+
+            const nameMatch = metadataSection.match(/NAME:\s*(.+)/);
+            const timeMatch = metadataSection.match(/TIME_MINUTES:\s*(\d+)/);
+            const servesMatch = metadataSection.match(/SERVES_PEOPLE:\s*(\d+)/);
+            const makesMatch = metadataSection.match(/MAKES_ITEMS:\s*(.+)/);
+
+            recipeName = nameMatch ? nameMatch[1].trim() : undefined;
+            timeMinutes = timeMatch ? parseInt(timeMatch[1]) : undefined;
+            servesPeople = servesMatch ? parseInt(servesMatch[1]) : undefined;
+            makesItems = makesMatch ? makesMatch[1].trim() : undefined;
+
+            cleanedRecipeData = extractedContent
+              .replace(/---RECIPE_METADATA---[\s\S]*?---END_METADATA---\s*/, "")
+              .trim();
+          }
+        }
+
+        return {
+          result: extractedContent,
+          recipeData: isRecipe ? cleanedRecipeData : undefined,
+          isUrl: true,
+          isRecipe,
+          originalUrl,
+          recipeName,
+          timeMinutes,
+          servesPeople,
+          makesItems,
+          recipeLanguage,
+          unitsLength,
+          unitsLiquid,
+          unitsWeight,
+          language,
+          units,
+        };
+      } catch (error) {
+        return {
+          result: `Error processing URL: ${error instanceof Error ? error.message : "Unknown error"}`,
+          isUrl: true,
+          isRecipe: false,
+          originalUrl,
+          language,
+          units,
+        };
+      }
+    }
+
+    // Fallback case
+    return {
+      result: "Unknown routing error",
+      isUrl: false,
+      isRecipe: false,
+      originalUrl,
+      language,
+      units,
+    };
+  },
+});
+
+// Create the URL processor workflow with social provider branching
 const urlProcessorWorkflow = createWorkflow({
   id: "url-processor-workflow",
   inputSchema: z.object({
@@ -542,7 +953,7 @@ const urlProcessorWorkflow = createWorkflow({
     result: z
       .string()
       .describe(
-        "Either the extracted recipe data or 'this is not a recipe' or error message"
+        "Either the extracted recipe data or 'this is not a recipe' or social provider message or error message"
       ),
     recipeData: z
       .string()
@@ -550,6 +961,11 @@ const urlProcessorWorkflow = createWorkflow({
       .describe("The extracted recipe data if found"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
     isRecipe: z.boolean().describe("Whether recipe data was found"),
+    isSocial: z
+      .boolean()
+      .optional()
+      .describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
     originalUrl: z
       .string()
       .optional()
@@ -593,26 +1009,8 @@ const urlProcessorWorkflow = createWorkflow({
       .describe("Target measurement units used for ingredients"),
   }),
 })
-  .then(processUrlStep)
-  .map(async ({ inputData }) => ({
-    htmlContent: inputData.result,
-    isUrl: inputData.isUrl,
-    originalUrl: inputData.originalUrl,
-    // Pass through language and units from previous step
-    language: inputData.language,
-    units: inputData.units,
-  }))
-  .then(cleanAndConvertStep)
-  .map(async ({ inputData }) => ({
-    result: inputData.result,
-    cleanedContent: inputData.cleanedContent,
-    isUrl: inputData.isUrl,
-    originalUrl: inputData.originalUrl,
-    // Pass through language and units to recipe extraction
-    language: inputData.language,
-    units: inputData.units,
-  }))
-  .then(recipeExtractionStep);
+  .then(socialProviderCheckStep)
+  .then(routingStep);
 
 urlProcessorWorkflow.commit();
 
