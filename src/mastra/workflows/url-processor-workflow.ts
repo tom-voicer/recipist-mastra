@@ -17,6 +17,8 @@ import {
   imageExtractionOutputSchema,
   cleanAndConvertInputSchema,
   cleanAndConvertOutputSchema,
+  unitParsingInputSchema,
+  unitParsingOutputSchema,
   recipeExtractionInputSchema,
   recipeExtractionOutputSchema,
   routerInputSchema,
@@ -172,6 +174,159 @@ const processUrlStep = createStep({
   },
 });
 
+// Step to intelligently parse units using AI
+const unitParsingStep = createStep({
+  id: "unit-parsing",
+  description:
+    "Uses AI to intelligently parse user units input and determine appropriate units for different measurement types",
+  inputSchema: unitParsingInputSchema,
+  outputSchema: unitParsingOutputSchema,
+  execute: async ({ inputData, mastra }) => {
+    if (!inputData) {
+      throw new Error("Input data not found");
+    }
+
+    const {
+      route,
+      result,
+      cleanedContent,
+      imageUrl,
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    } = inputData;
+
+    // Skip unit parsing for social providers and errors
+    if (route === "social" || route === "error") {
+      return {
+        route,
+        result,
+        cleanedContent,
+        imageUrl,
+        isSocial,
+        provider,
+        isUrl,
+        originalUrl,
+        language,
+        units,
+      };
+    }
+
+    // Only parse units for normal route with content
+    if (route === "normal" && cleanedContent) {
+      try {
+        // Get the unit parsing agent from the mastra instance
+        const agent = mastra?.getAgent("unit-parser");
+        if (!agent) {
+          throw new Error("Unit parsing agent not found");
+        }
+
+        // Build the prompt for unit parsing
+        let prompt = `Please analyze the user's units request: "${units || "not specified"}" and the following recipe content to determine the appropriate units for each measurement type.
+
+Recipe content:
+${cleanedContent}
+
+Please return a JSON object with the following structure:
+{
+  "unitsLength": "cm|inch|mm|etc or null if not specified",
+  "unitsLiquid": "ml|cup|liter|etc or null if not specified", 
+  "unitsWeight": "grams|ounces|kg|etc or null if not specified",
+  "unitsTemperature": "celsius|fahrenheit|kelvin or null if not specified"
+}
+
+Rules:
+1. If the user specified units (e.g., "metric", "imperial", "grams celsius"), parse what they want
+2. If they didn't specify certain unit types, analyze the recipe's original units and use those defaults
+3. For general terms: "metric" = cm/ml/grams/celsius, "imperial" = inch/cup/ounces/fahrenheit
+4. Return only the JSON object, no other text`;
+
+        // Generate response from the agent
+        const response = await agent.generate([
+          { role: "user", content: prompt },
+        ]);
+
+        // Parse the JSON response
+        let parsedUnits;
+        try {
+          parsedUnits = JSON.parse(response.text.trim());
+        } catch (e) {
+          // Fallback to algorithmic parsing if AI fails
+          parsedUnits = {
+            unitsLength: units ? parseUnitsCategory(units, "length") : null,
+            unitsLiquid: units ? parseUnitsCategory(units, "liquid") : null,
+            unitsWeight: units ? parseUnitsCategory(units, "weight") : null,
+            unitsTemperature: units
+              ? parseUnitsCategory(units, "temperature")
+              : null,
+          };
+        }
+
+        return {
+          route,
+          result: "units_parsed",
+          cleanedContent,
+          imageUrl,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
+          language,
+          units,
+          unitsLength: parsedUnits.unitsLength,
+          unitsLiquid: parsedUnits.unitsLiquid,
+          unitsWeight: parsedUnits.unitsWeight,
+          unitsTemperature: parsedUnits.unitsTemperature,
+        };
+      } catch (error) {
+        // Don't fail the whole workflow if unit parsing fails, use algorithmic fallback
+        const fallbackUnits = {
+          unitsLength: units ? parseUnitsCategory(units, "length") : undefined,
+          unitsLiquid: units ? parseUnitsCategory(units, "liquid") : undefined,
+          unitsWeight: units ? parseUnitsCategory(units, "weight") : undefined,
+          unitsTemperature: units
+            ? parseUnitsCategory(units, "temperature")
+            : undefined,
+        };
+
+        return {
+          route,
+          result: "units_parsed_fallback",
+          cleanedContent,
+          imageUrl,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
+          language,
+          units,
+          unitsLength: fallbackUnits.unitsLength,
+          unitsLiquid: fallbackUnits.unitsLiquid,
+          unitsWeight: fallbackUnits.unitsWeight,
+          unitsTemperature: fallbackUnits.unitsTemperature,
+        };
+      }
+    }
+
+    // Pass through if no content to analyze
+    return {
+      route,
+      result,
+      cleanedContent,
+      imageUrl,
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    };
+  },
+});
+
 // Step to extract recipe image from markdown content
 const imageExtractionStep = createStep({
   id: "image-extraction",
@@ -195,6 +350,10 @@ const imageExtractionStep = createStep({
       originalUrl,
       language,
       units,
+      unitsLength,
+      unitsLiquid,
+      unitsWeight,
+      unitsTemperature,
     } = inputData;
 
     // Skip image extraction for social providers and errors
@@ -210,6 +369,10 @@ const imageExtractionStep = createStep({
         originalUrl,
         language,
         units,
+        unitsLength,
+        unitsLiquid,
+        unitsWeight,
+        unitsTemperature,
       };
     }
 
@@ -248,6 +411,10 @@ ${cleanedContent}`,
           originalUrl,
           language,
           units,
+          unitsLength,
+          unitsLiquid,
+          unitsWeight,
+          unitsTemperature,
         };
       } catch (error) {
         // Don't fail the whole workflow if image extraction fails, just continue without image
@@ -262,6 +429,10 @@ ${cleanedContent}`,
           originalUrl,
           language,
           units,
+          unitsLength,
+          unitsLiquid,
+          unitsWeight,
+          unitsTemperature,
         };
       }
     }
@@ -278,6 +449,10 @@ ${cleanedContent}`,
       originalUrl,
       language,
       units,
+      unitsLength,
+      unitsLiquid,
+      unitsWeight,
+      unitsTemperature,
     };
   },
 });
@@ -397,6 +572,10 @@ const recipeExtractionStep = createStep({
       originalUrl,
       language,
       units,
+      unitsLength,
+      unitsLiquid,
+      unitsWeight,
+      unitsTemperature,
     } = inputData;
 
     // Skip recipe extraction for social providers and errors
@@ -435,9 +614,11 @@ ${cleanedContent}`;
           prompt += `\n\nIMPORTANT: Please translate the entire recipe (title, ingredients, instructions, and all text) to ${language}.`;
         }
 
+        // Use the AI-parsed units from the previous step
+
         // Add units conversion instruction if specified
         if (units) {
-          prompt += `\n\nIMPORTANT: Please convert all ingredient measurements to ${units} units. Use accurate conversion factors (e.g., 1 cup flour ≈ 120g, 1 tablespoon ≈ 15ml).`;
+          prompt += `\n\nIMPORTANT: Please convert all measurements and temperatures in the recipe according to these units: "${units}". Use accurate conversion factors (e.g., 1 cup flour ≈ 120g, 1 tablespoon ≈ 15ml, 350°F = 175°C, 200°C = 400°F). If the user didn't specify certain unit types, keep the recipe's original units for those measurements.`;
         }
 
         // Generate response from the agent
@@ -454,17 +635,6 @@ ${cleanedContent}`;
         let servesPeople: number | undefined;
         let makesItems: string | undefined;
         let cleanedRecipeData = extractedContent;
-
-        // Set user-requested parameters
-        const unitsLength = units
-          ? parseUnitsCategory(units, "length")
-          : undefined;
-        const unitsLiquid = units
-          ? parseUnitsCategory(units, "liquid")
-          : undefined;
-        const unitsWeight = units
-          ? parseUnitsCategory(units, "weight")
-          : undefined;
 
         // Convert language to ISO code
         const languageCode = language
@@ -516,6 +686,7 @@ ${cleanedContent}`;
           language,
           languageCode,
           units,
+          unitsTemperature,
         };
       } catch (error) {
         return {
@@ -638,7 +809,7 @@ const endStep = createStep({
       throw new Error("Input data not found");
     }
 
-    // Just pass through all the data, removing the route field
+    // Just pass through all the data, removing the route field and restructuring units
     return {
       result: inputData.result,
       recipeData: inputData.recipeData,
@@ -652,12 +823,14 @@ const endStep = createStep({
       timeMinutes: inputData.timeMinutes,
       servesPeople: inputData.servesPeople,
       makesItems: inputData.makesItems,
-      unitsLength: inputData.unitsLength,
-      unitsLiquid: inputData.unitsLiquid,
-      unitsWeight: inputData.unitsWeight,
       language: inputData.language,
       languageCode: inputData.languageCode,
-      units: inputData.units,
+      units: {
+        length: inputData.unitsLength,
+        liquid: inputData.unitsLiquid,
+        weight: inputData.unitsWeight,
+        temperature: inputData.unitsTemperature,
+      },
     };
   },
 });
@@ -672,6 +845,7 @@ const urlProcessorWorkflow = createWorkflow({
   .then(routerStep)
   .then(processUrlStep)
   .then(cleanAndConvertStep)
+  .then(unitParsingStep)
   .then(imageExtractionStep)
   .then(recipeExtractionStep)
   .then(endStep);

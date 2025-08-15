@@ -1,7 +1,7 @@
 // Function to parse user's units request into specific categories
 export function parseUnitsCategory(
   units: string,
-  category: "length" | "liquid" | "weight"
+  category: "length" | "liquid" | "weight" | "temperature"
 ): string | undefined {
   const unitsLower = units.toLowerCase();
 
@@ -49,6 +49,14 @@ export function parseUnitsCategory(
       "lb",
       "lbs",
     ],
+    temperature: [
+      "celsius",
+      "c",
+      "fahrenheit",
+      "f",
+      "kelvin",
+      "k",
+    ],
   };
 
   // Check if the units string contains any units from the requested category
@@ -68,6 +76,9 @@ export function parseUnitsCategory(
   } else if (category === "weight") {
     if (unitsLower.includes("metric")) return "grams";
     if (unitsLower.includes("imperial")) return "ounces";
+  } else if (category === "temperature") {
+    if (unitsLower.includes("metric")) return "celsius";
+    if (unitsLower.includes("imperial")) return "fahrenheit";
   }
 
   return undefined;

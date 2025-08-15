@@ -13,7 +13,7 @@ export const workflowInputSchema = z.object({
     .string()
     .optional()
     .describe(
-      "Target measurement units for ingredients (e.g., 'metric', 'imperial', 'grams/liters')"
+      "Target measurement and temperature units for ingredients and cooking (e.g., 'metric', 'imperial', 'grams/liters celsius', 'cups fahrenheit')"
     ),
 });
 
@@ -74,7 +74,12 @@ export const workflowOutputSchema = z.object({
     .optional()
     .describe("ISO 639-1 language code for the target language"),
   units: z
-    .string()
+    .object({
+      length: z.string().optional(),
+      liquid: z.string().optional(),
+      weight: z.string().optional(),
+      temperature: z.string().optional(),
+    })
     .optional()
-    .describe("Target measurement units used for ingredients"),
+    .describe("Structured units object with specific units for each measurement type"),
 });

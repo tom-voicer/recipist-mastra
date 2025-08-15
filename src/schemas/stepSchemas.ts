@@ -12,7 +12,7 @@ export const socialProviderCheckInputSchema = z.object({
   units: z
     .string()
     .optional()
-    .describe("Target measurement units for ingredients"),
+    .describe("Target measurement and temperature units for ingredients and cooking"),
 });
 
 export const socialProviderCheckOutputSchema = z.object({
@@ -38,7 +38,7 @@ export const socialProviderCheckOutputSchema = z.object({
   units: z
     .string()
     .optional()
-    .describe("Target measurement units for ingredients"),
+    .describe("Target measurement and temperature units for ingredients and cooking"),
 });
 
 // Process URL Step Schemas
@@ -50,7 +50,7 @@ export const processUrlInputSchema = z.object({
   isUrl: z.boolean().describe("Whether the input was a valid URL"),
   originalUrl: z.string().optional().describe("The original URL"),
   language: z.string().optional().describe("Target language"),
-  units: z.string().optional().describe("Target units"),
+  units: z.string().optional().describe("Target measurement and temperature units"),
 });
 
 export const processUrlOutputSchema = z.object({
@@ -80,6 +80,10 @@ export const imageExtractionInputSchema = z.object({
   originalUrl: z.string().optional().describe("The original URL"),
   language: z.string().optional(),
   units: z.string().optional(),
+  unitsLength: z.string().optional().describe("Primary length units"),
+  unitsLiquid: z.string().optional().describe("Primary liquid units"),
+  unitsWeight: z.string().optional().describe("Primary weight units"),
+  unitsTemperature: z.string().optional().describe("Primary temperature units"),
 });
 
 export const imageExtractionOutputSchema = z.object({
@@ -93,6 +97,10 @@ export const imageExtractionOutputSchema = z.object({
   originalUrl: z.string().optional().describe("The original URL"),
   language: z.string().optional(),
   units: z.string().optional(),
+  unitsLength: z.string().optional().describe("Primary length units"),
+  unitsLiquid: z.string().optional().describe("Primary liquid units"),
+  unitsWeight: z.string().optional().describe("Primary weight units"),
+  unitsTemperature: z.string().optional().describe("Primary temperature units"),
 });
 
 // Clean and Convert Step Schemas
@@ -107,6 +115,7 @@ export const cleanAndConvertInputSchema = z.object({
   originalUrl: z.string().optional().describe("The original URL"),
   language: z.string().optional(),
   units: z.string().optional(),
+
 });
 
 export const cleanAndConvertOutputSchema = z.object({
@@ -123,6 +132,41 @@ export const cleanAndConvertOutputSchema = z.object({
   originalUrl: z.string().optional().describe("The original URL"),
   language: z.string().optional(),
   units: z.string().optional(),
+
+});
+
+// Unit Parsing Step Schemas
+export const unitParsingInputSchema = z.object({
+  route: z.enum(["social", "normal", "error"]).describe("The processing route"),
+  result: z.string().describe("Previous result"),
+  cleanedContent: z
+    .string()
+    .optional()
+    .describe("The markdown content to analyze for default units"),
+  imageUrl: z.string().optional().describe("The recipe image URL"),
+  isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+  provider: z.string().optional().describe("The social media provider name"),
+  isUrl: z.boolean().describe("Whether the input was a valid URL"),
+  originalUrl: z.string().optional().describe("The original URL"),
+  language: z.string().optional(),
+  units: z.string().optional(),
+});
+
+export const unitParsingOutputSchema = z.object({
+  route: z.enum(["social", "normal", "error"]).describe("The processing route"),
+  result: z.string().describe("Success message or error"),
+  cleanedContent: z.string().optional().describe("The markdown content"),
+  imageUrl: z.string().optional().describe("The recipe image URL"),
+  isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+  provider: z.string().optional().describe("The social media provider name"),
+  isUrl: z.boolean().describe("Whether the input was a valid URL"),
+  originalUrl: z.string().optional().describe("The original URL"),
+  language: z.string().optional(),
+  units: z.string().optional(),
+  unitsLength: z.string().optional().describe("Primary length units"),
+  unitsLiquid: z.string().optional().describe("Primary liquid units"),
+  unitsWeight: z.string().optional().describe("Primary weight units"),
+  unitsTemperature: z.string().optional().describe("Primary temperature units"),
 });
 
 // Recipe Extraction Step Schemas
@@ -140,6 +184,10 @@ export const recipeExtractionInputSchema = z.object({
   originalUrl: z.string().optional().describe("The original URL"),
   language: z.string().optional(),
   units: z.string().optional(),
+  unitsLength: z.string().optional().describe("Primary length units"),
+  unitsLiquid: z.string().optional().describe("Primary liquid units"),
+  unitsWeight: z.string().optional().describe("Primary weight units"),
+  unitsTemperature: z.string().optional().describe("Primary temperature units"),
 });
 
 export const recipeExtractionOutputSchema = z.object({
@@ -167,6 +215,8 @@ export const recipeExtractionOutputSchema = z.object({
   language: z.string().optional(),
   languageCode: z.string().optional().describe("ISO 639-1 language code"),
   units: z.string().optional(),
+
+  unitsTemperature: z.string().optional().describe("Primary temperature units"),
 });
 
 // Router Step Schemas
@@ -194,6 +244,7 @@ export const routerInputSchema = z.object({
     .string()
     .optional()
     .describe("Target measurement units for ingredients"),
+
 });
 
 export const routerOutputSchema = z.object({
@@ -207,6 +258,7 @@ export const routerOutputSchema = z.object({
   originalUrl: z.string().optional().describe("The original URL"),
   language: z.string().optional().describe("Target language"),
   units: z.string().optional().describe("Target units"),
+
 });
 
 // End Step Schemas
@@ -230,6 +282,8 @@ export const endInputSchema = z.object({
   language: z.string().optional(),
   languageCode: z.string().optional(),
   units: z.string().optional(),
+
+  unitsTemperature: z.string().optional(),
 });
 
 export const endOutputSchema = z.object({
@@ -260,18 +314,6 @@ export const endOutputSchema = z.object({
     .string()
     .optional()
     .describe("Number of individual items made, or 'N/A' if not applicable"),
-  unitsLength: z
-    .string()
-    .optional()
-    .describe("Primary length units found in the recipe"),
-  unitsLiquid: z
-    .string()
-    .optional()
-    .describe("Primary liquid units found in the recipe"),
-  unitsWeight: z
-    .string()
-    .optional()
-    .describe("Primary weight units found in the recipe"),
   language: z
     .string()
     .optional()
@@ -281,7 +323,12 @@ export const endOutputSchema = z.object({
     .optional()
     .describe("ISO 639-1 language code for the target language"),
   units: z
-    .string()
+    .object({
+      length: z.string().optional(),
+      liquid: z.string().optional(),
+      weight: z.string().optional(),
+      temperature: z.string().optional(),
+    })
     .optional()
-    .describe("Target measurement units used for ingredients"),
+    .describe("Structured units object with specific units for each measurement type"),
 });
