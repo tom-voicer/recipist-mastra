@@ -297,85 +297,116 @@ const socialProviderCheckStep = createStep({
 // Step to check URL and fetch HTML content if valid
 const processUrlStep = createStep({
   id: "process-url",
-  description:
-    "Checks if input is a valid URL and fetches HTML content if it is",
+  description: "Fetches HTML content from the URL",
   inputSchema: z.object({
-    input: z.string().describe("The string input to check if it is a URL"),
-    language: z
-      .string()
-      .optional()
-      .describe("Target language for recipe translation"),
-    units: z
-      .string()
-      .optional()
-      .describe("Target measurement units for ingredients"),
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route"),
+    result: z.string().describe("Previous result"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z.string().optional().describe("The original URL"),
+    language: z.string().optional().describe("Target language"),
+    units: z.string().optional().describe("Target units"),
   }),
   outputSchema: z.object({
-    result: z.string().describe("Either the HTML content or error message"),
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route"),
+    result: z.string().describe("Success message or error"),
+    htmlContent: z.string().optional().describe("The fetched HTML content"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
-    originalUrl: z
-      .string()
-      .optional()
-      .describe("The original URL that was processed"),
-    language: z
-      .string()
-      .optional()
-      .describe("Target language for recipe translation"),
-    units: z
-      .string()
-      .optional()
-      .describe("Target measurement units for ingredients"),
+    originalUrl: z.string().optional().describe("The original URL"),
+    language: z.string().optional(),
+    units: z.string().optional(),
   }),
   execute: async ({ inputData }) => {
-    if (!inputData?.input) {
+    if (!inputData) {
       throw new Error("Input data not found");
     }
 
-    const { input, language, units } = inputData;
+    const {
+      route,
+      result,
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    } = inputData;
 
-    // Check if the input is a valid URL
-    if (!isValidUrl(input)) {
+    // Skip HTML fetching for social providers and errors
+    if (route === "social" || route === "error") {
       return {
-        result: "this is not a url",
-        isUrl: false,
-        originalUrl: undefined,
+        route,
+        result,
+        isSocial,
+        provider,
+        isUrl,
+        originalUrl,
         language,
         units,
       };
     }
 
-    try {
-      // Fetch the HTML content from the URL
-      const response = await fetch(input);
+    // Only fetch HTML for normal route
+    if (route === "normal" && originalUrl) {
+      try {
+        const response = await fetch(originalUrl);
+        if (!response.ok) {
+          return {
+            route: "error" as const,
+            result: `Failed to fetch URL: ${response.status} ${response.statusText}`,
+            isSocial,
+            provider,
+            isUrl,
+            originalUrl,
+            language,
+            units,
+          };
+        }
 
-      if (!response.ok) {
+        const htmlContent = await response.text();
         return {
-          result: `Failed to fetch URL: ${response.status} ${response.statusText}`,
-          isUrl: true,
-          originalUrl: input,
+          route,
+          result: "html_fetched",
+          htmlContent,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
+          language,
+          units,
+        };
+      } catch (error) {
+        return {
+          route: "error" as const,
+          result: `Error fetching URL: ${error instanceof Error ? error.message : "Unknown error"}`,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
           language,
           units,
         };
       }
-
-      const htmlContent = await response.text();
-
-      return {
-        result: htmlContent,
-        isUrl: true,
-        originalUrl: input,
-        language,
-        units,
-      };
-    } catch (error) {
-      return {
-        result: `Error fetching URL: ${error instanceof Error ? error.message : "Unknown error"}`,
-        isUrl: true,
-        originalUrl: input,
-        language,
-        units,
-      };
     }
+
+    // Fallback
+    return {
+      route: "error" as const,
+      result: "Invalid state for HTML fetching",
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    };
   },
 });
 
@@ -384,94 +415,112 @@ const cleanAndConvertStep = createStep({
   id: "clean-and-convert",
   description: "Cleans HTML content and converts it to markdown format",
   inputSchema: z.object({
-    htmlContent: z.string().describe("The HTML content to clean and convert"),
-    isUrl: z.boolean().describe("Whether the original input was a valid URL"),
-    originalUrl: z
-      .string()
-      .optional()
-      .describe("The original URL that was processed"),
-    language: z
-      .string()
-      .optional()
-      .describe("Target language for recipe translation"),
-    units: z
-      .string()
-      .optional()
-      .describe("Target measurement units for ingredients"),
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route"),
+    result: z.string().describe("Previous result"),
+    htmlContent: z.string().optional().describe("The HTML content to clean"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z.string().optional().describe("The original URL"),
+    language: z.string().optional(),
+    units: z.string().optional(),
   }),
   outputSchema: z.object({
-    result: z
-      .string()
-      .describe("Either the cleaned markdown content or error message"),
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route"),
+    result: z.string().describe("Success message or error"),
     cleanedContent: z
       .string()
       .optional()
-      .describe("The cleaned and converted markdown content"),
-    isUrl: z.boolean().describe("Whether the original input was a valid URL"),
-    originalUrl: z
-      .string()
-      .optional()
-      .describe("The original URL that was processed"),
-    language: z
-      .string()
-      .optional()
-      .describe("Target language for recipe translation"),
-    units: z
-      .string()
-      .optional()
-      .describe("Target measurement units for ingredients"),
+      .describe("The cleaned markdown content"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z.string().optional().describe("The original URL"),
+    language: z.string().optional(),
+    units: z.string().optional(),
   }),
   execute: async ({ inputData }) => {
-    if (!inputData?.htmlContent || !inputData?.isUrl) {
-      return {
-        result: inputData?.htmlContent || "No content to process",
-        isUrl: inputData?.isUrl || false,
-        originalUrl: inputData?.originalUrl,
-        language: inputData?.language,
-        units: inputData?.units,
-      };
+    if (!inputData) {
+      throw new Error("Input data not found");
     }
 
-    const { htmlContent, isUrl, originalUrl, language, units } = inputData;
+    const {
+      route,
+      result,
+      htmlContent,
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    } = inputData;
 
-    // Only process if it was a valid URL
-    if (!isUrl) {
+    // Skip cleaning for social providers and errors
+    if (route === "social" || route === "error") {
       return {
-        result: htmlContent,
-        isUrl: false,
+        route,
+        result,
+        isSocial,
+        provider,
+        isUrl,
         originalUrl,
         language,
         units,
       };
     }
 
-    try {
-      // Clean HTML and convert to markdown
-      const cleanedContent = cleanHtml(htmlContent, {
-        removeAttributes: true,
-        removeEmptyElements: true,
-        normalizeWhitespace: true,
-        removeComments: true,
-        convertToMarkdown: true,
-      });
+    // Only clean HTML for normal route with HTML content
+    if (route === "normal" && htmlContent) {
+      try {
+        const cleanedContent = cleanHtml(htmlContent, {
+          removeAttributes: true,
+          removeEmptyElements: true,
+          normalizeWhitespace: true,
+          removeComments: true,
+          convertToMarkdown: true,
+        });
 
-      return {
-        result: cleanedContent,
-        cleanedContent: cleanedContent,
-        isUrl: true,
-        originalUrl,
-        language,
-        units,
-      };
-    } catch (error) {
-      return {
-        result: `Error cleaning HTML: ${error instanceof Error ? error.message : "Unknown error"}`,
-        isUrl: true,
-        originalUrl,
-        language,
-        units,
-      };
+        return {
+          route,
+          result: "html_cleaned",
+          cleanedContent,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
+          language,
+          units,
+        };
+      } catch (error) {
+        return {
+          route: "error" as const,
+          result: `Error cleaning HTML: ${error instanceof Error ? error.message : "Unknown error"}`,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
+          language,
+          units,
+        };
+      }
     }
+
+    // Pass through if no HTML content
+    return {
+      route,
+      result,
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    };
   },
 });
 
@@ -481,200 +530,214 @@ const recipeExtractionStep = createStep({
   description:
     "Extracts recipe data from markdown content using AI, filtering out noise, converting language and units",
   inputSchema: z.object({
-    result: z.string().describe("The markdown content to analyze for recipes"),
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route"),
+    result: z.string().describe("Previous result"),
     cleanedContent: z
       .string()
       .optional()
-      .describe("The cleaned and converted markdown content"),
-    isUrl: z.boolean().describe("Whether the original input was a valid URL"),
-    originalUrl: z
-      .string()
-      .optional()
-      .describe("The original URL that was processed"),
-    language: z
-      .string()
-      .optional()
-      .describe("Target language for recipe translation"),
-    units: z
-      .string()
-      .optional()
-      .describe("Target measurement units for ingredients"),
+      .describe("The markdown content to analyze"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z.string().optional().describe("The original URL"),
+    language: z.string().optional(),
+    units: z.string().optional(),
   }),
   outputSchema: z.object({
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route"),
     result: z
       .string()
-      .describe("Either the extracted recipe data or 'this is not a recipe'"),
+      .describe("Either the extracted recipe or 'this is not a recipe'"),
     recipeData: z
       .string()
       .optional()
       .describe("The extracted recipe data if found"),
-    isUrl: z.boolean().describe("Whether the original input was a valid URL"),
     isRecipe: z.boolean().describe("Whether recipe data was found"),
-    originalUrl: z
-      .string()
-      .optional()
-      .describe("The original URL that was processed"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z.string().optional().describe("The original URL"),
     recipeName: z.string().optional().describe("The name/title of the recipe"),
-    timeMinutes: z
-      .number()
-      .optional()
-      .describe("Total time in minutes to make the recipe"),
-    servesPeople: z
-      .number()
-      .optional()
-      .describe("Number of people the recipe serves"),
-    makesItems: z
-      .string()
-      .optional()
-      .describe("Number of individual items made, or 'N/A' if not applicable"),
+    timeMinutes: z.number().optional().describe("Total time in minutes"),
+    servesPeople: z.number().optional().describe("Number of people served"),
+    makesItems: z.string().optional().describe("Number of items made"),
     recipeLanguage: z
       .string()
       .optional()
       .describe("The language used in the recipe"),
-    unitsLength: z
-      .string()
-      .optional()
-      .describe("Primary length units found in the recipe"),
-    unitsLiquid: z
-      .string()
-      .optional()
-      .describe("Primary liquid units found in the recipe"),
-    unitsWeight: z
-      .string()
-      .optional()
-      .describe("Primary weight units found in the recipe"),
-    language: z
-      .string()
-      .optional()
-      .describe("Target language used for recipe translation"),
-    units: z
-      .string()
-      .optional()
-      .describe("Target measurement units used for ingredients"),
+    unitsLength: z.string().optional().describe("Primary length units"),
+    unitsLiquid: z.string().optional().describe("Primary liquid units"),
+    unitsWeight: z.string().optional().describe("Primary weight units"),
+    language: z.string().optional(),
+    units: z.string().optional(),
   }),
   execute: async ({ inputData, mastra }) => {
-    if (!inputData?.isUrl || !inputData?.cleanedContent) {
+    if (!inputData) {
+      throw new Error("Input data not found");
+    }
+
+    const {
+      route,
+      result,
+      cleanedContent,
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    } = inputData;
+
+    // Skip recipe extraction for social providers and errors
+    if (route === "social" || route === "error") {
       return {
-        result: inputData?.result || "No content to process",
-        isUrl: inputData?.isUrl || false,
+        route,
+        result,
         isRecipe: false,
-        originalUrl: inputData?.originalUrl,
-        language: inputData?.language,
-        units: inputData?.units,
+        isSocial,
+        provider,
+        isUrl,
+        originalUrl,
+        language,
+        units,
       };
     }
 
-    const { cleanedContent, originalUrl, language, units } = inputData;
+    // Only extract recipe for normal route with cleaned content
+    if (route === "normal" && cleanedContent) {
+      try {
+        // Get the recipe extraction agent from the mastra instance
+        const agent = mastra?.getAgent("recipe-extractor");
+        if (!agent) {
+          throw new Error("Recipe extraction agent not found");
+        }
 
-    try {
-      // Get the recipe extraction agent from the mastra instance
-      const agent = mastra?.getAgent("recipe-extractor");
-      if (!agent) {
-        throw new Error("Recipe extraction agent not found");
-      }
-
-      // Build the prompt with language and units instructions
-      let prompt = `Please analyze the following markdown content and extract any recipe information. Remove all website noise and focus only on the recipe data:
+        // Build the prompt with language and units instructions
+        let prompt = `Please analyze the following markdown content and extract any recipe information. Remove all website noise and focus only on the recipe data:
 
 ${cleanedContent}`;
 
-      // Add language conversion instruction if specified
-      if (language) {
-        prompt += `\n\nIMPORTANT: Please translate the entire recipe (title, ingredients, instructions, and all text) to ${language}.`;
-      }
-
-      // Add units conversion instruction if specified
-      if (units) {
-        prompt += `\n\nIMPORTANT: Please convert all ingredient measurements to ${units} units. Use accurate conversion factors (e.g., 1 cup flour ≈ 120g, 1 tablespoon ≈ 15ml).`;
-      }
-
-      // Generate response from the agent
-      const response = await agent.generate([
-        { role: "user", content: prompt },
-      ]);
-
-      const extractedContent = response.text.trim();
-      const isRecipe = extractedContent !== "this is not a recipe";
-
-      // Parse structured metadata if this is a recipe
-      let recipeName: string | undefined;
-      let timeMinutes: number | undefined;
-      let servesPeople: number | undefined;
-      let makesItems: string | undefined;
-      let cleanedRecipeData = extractedContent;
-
-      // Set user-requested parameters
-      const recipeLanguage = language || undefined;
-      const unitsLength = units
-        ? parseUnitsCategory(units, "length")
-        : undefined;
-      const unitsLiquid = units
-        ? parseUnitsCategory(units, "liquid")
-        : undefined;
-      const unitsWeight = units
-        ? parseUnitsCategory(units, "weight")
-        : undefined;
-
-      if (isRecipe) {
-        const metadataMatch = extractedContent.match(
-          /---RECIPE_METADATA---([\s\S]*?)---END_METADATA---/
-        );
-        if (metadataMatch) {
-          const metadataSection = metadataMatch[1];
-
-          // Extract individual metadata fields (only recipe-specific data)
-          const nameMatch = metadataSection.match(/NAME:\s*(.+)/);
-          const timeMatch = metadataSection.match(/TIME_MINUTES:\s*(\d+)/);
-          const servesMatch = metadataSection.match(/SERVES_PEOPLE:\s*(\d+)/);
-          const makesMatch = metadataSection.match(/MAKES_ITEMS:\s*(.+)/);
-
-          recipeName = nameMatch ? nameMatch[1].trim() : undefined;
-          timeMinutes = timeMatch ? parseInt(timeMatch[1]) : undefined;
-          servesPeople = servesMatch ? parseInt(servesMatch[1]) : undefined;
-          makesItems = makesMatch ? makesMatch[1].trim() : undefined;
-
-          // Remove metadata section from the recipe data
-          cleanedRecipeData = extractedContent
-            .replace(/---RECIPE_METADATA---[\s\S]*?---END_METADATA---\s*/, "")
-            .trim();
+        // Add language conversion instruction if specified
+        if (language) {
+          prompt += `\n\nIMPORTANT: Please translate the entire recipe (title, ingredients, instructions, and all text) to ${language}.`;
         }
-      }
 
-      return {
-        result: extractedContent,
-        recipeData: isRecipe ? cleanedRecipeData : undefined,
-        isUrl: true,
-        isRecipe,
-        originalUrl,
-        recipeName,
-        timeMinutes,
-        servesPeople,
-        makesItems,
-        recipeLanguage,
-        unitsLength,
-        unitsLiquid,
-        unitsWeight,
-        language,
-        units,
-      };
-    } catch (error) {
-      return {
-        result: `Error extracting recipe: ${error instanceof Error ? error.message : "Unknown error"}`,
-        isUrl: true,
-        isRecipe: false,
-        originalUrl,
-        language,
-        units,
-      };
+        // Add units conversion instruction if specified
+        if (units) {
+          prompt += `\n\nIMPORTANT: Please convert all ingredient measurements to ${units} units. Use accurate conversion factors (e.g., 1 cup flour ≈ 120g, 1 tablespoon ≈ 15ml).`;
+        }
+
+        // Generate response from the agent
+        const response = await agent.generate([
+          { role: "user", content: prompt },
+        ]);
+
+        const extractedContent = response.text.trim();
+        const isRecipe = extractedContent !== "this is not a recipe";
+
+        // Parse structured metadata if this is a recipe
+        let recipeName: string | undefined;
+        let timeMinutes: number | undefined;
+        let servesPeople: number | undefined;
+        let makesItems: string | undefined;
+        let cleanedRecipeData = extractedContent;
+
+        // Set user-requested parameters
+        const recipeLanguage = language || undefined;
+        const unitsLength = units
+          ? parseUnitsCategory(units, "length")
+          : undefined;
+        const unitsLiquid = units
+          ? parseUnitsCategory(units, "liquid")
+          : undefined;
+        const unitsWeight = units
+          ? parseUnitsCategory(units, "weight")
+          : undefined;
+
+        if (isRecipe) {
+          const metadataMatch = extractedContent.match(
+            /---RECIPE_METADATA---([\s\S]*?)---END_METADATA---/
+          );
+          if (metadataMatch) {
+            const metadataSection = metadataMatch[1];
+
+            // Extract individual metadata fields (only recipe-specific data)
+            const nameMatch = metadataSection.match(/NAME:\s*(.+)/);
+            const timeMatch = metadataSection.match(/TIME_MINUTES:\s*(\d+)/);
+            const servesMatch = metadataSection.match(/SERVES_PEOPLE:\s*(\d+)/);
+            const makesMatch = metadataSection.match(/MAKES_ITEMS:\s*(.+)/);
+
+            recipeName = nameMatch ? nameMatch[1].trim() : undefined;
+            timeMinutes = timeMatch ? parseInt(timeMatch[1]) : undefined;
+            servesPeople = servesMatch ? parseInt(servesMatch[1]) : undefined;
+            makesItems = makesMatch ? makesMatch[1].trim() : undefined;
+
+            // Remove metadata section from the recipe data
+            cleanedRecipeData = extractedContent
+              .replace(/---RECIPE_METADATA---[\s\S]*?---END_METADATA---\s*/, "")
+              .trim();
+          }
+        }
+
+        return {
+          route,
+          result: extractedContent,
+          recipeData: isRecipe ? cleanedRecipeData : undefined,
+          isRecipe,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
+          recipeName,
+          timeMinutes,
+          servesPeople,
+          makesItems,
+          recipeLanguage,
+          unitsLength,
+          unitsLiquid,
+          unitsWeight,
+          language,
+          units,
+        };
+      } catch (error) {
+        return {
+          route: "error" as const,
+          result: `Error extracting recipe: ${error instanceof Error ? error.message : "Unknown error"}`,
+          isRecipe: false,
+          isSocial,
+          provider,
+          isUrl,
+          originalUrl,
+          language,
+          units,
+        };
+      }
     }
+
+    // Pass through if no cleaned content
+    return {
+      route,
+      result,
+      isRecipe: false,
+      isSocial,
+      provider,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    };
   },
 });
 
-// Step to handle routing logic after social provider check
-const routingStep = createStep({
-  id: "routing-step",
+// Simple router step that just determines which path to take
+const routerStep = createStep({
+  id: "router",
   description:
-    "Routes to appropriate processing based on social provider check",
+    "Determines which processing path to take based on social provider check",
   inputSchema: z.object({
     result: z.string().describe("The routing instruction"),
     isSocial: z.boolean().describe("Whether the URL is from a social provider"),
@@ -701,15 +764,115 @@ const routingStep = createStep({
       .describe("Target measurement units for ingredients"),
   }),
   outputSchema: z.object({
-    result: z
-      .string()
-      .describe(
-        "Either the extracted recipe data or 'this is not a recipe' or social provider message or error message"
-      ),
-    recipeData: z
-      .string()
-      .optional()
-      .describe("The extracted recipe data if found"),
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route to take"),
+    result: z.string().describe("Result message or routing decision"),
+    isSocial: z.boolean().describe("Whether the URL is from a social provider"),
+    provider: z.string().optional().describe("The social media provider name"),
+    isUrl: z.boolean().describe("Whether the input was a valid URL"),
+    originalUrl: z.string().optional().describe("The original URL"),
+    language: z.string().optional().describe("Target language"),
+    units: z.string().optional().describe("Target units"),
+  }),
+  execute: async ({ inputData }) => {
+    if (!inputData) {
+      throw new Error("Input data not found");
+    }
+
+    const {
+      result,
+      isSocial,
+      provider,
+      displayName,
+      isUrl,
+      originalUrl,
+      language,
+      units,
+    } = inputData;
+
+    // Handle social provider routing - go directly to end
+    if (result === "route_to_social" && isSocial && provider && displayName) {
+      return {
+        route: "social" as const,
+        result: `this url is from ${displayName}`,
+        isSocial: true,
+        provider: displayName,
+        isUrl: true,
+        originalUrl,
+        language,
+        units,
+      };
+    }
+
+    // Handle invalid URL case
+    if (result === "this is not a url") {
+      return {
+        route: "error" as const,
+        result: "this is not a url",
+        isSocial: false,
+        isUrl: false,
+        originalUrl,
+        language,
+        units,
+      };
+    }
+
+    // Handle normal URL processing flow
+    if (result === "route_to_normal" && isUrl && originalUrl) {
+      return {
+        route: "normal" as const,
+        result: "continue_processing",
+        isSocial: false,
+        isUrl: true,
+        originalUrl,
+        language,
+        units,
+      };
+    }
+
+    // Fallback case
+    return {
+      route: "error" as const,
+      result: "Unknown routing error",
+      isSocial: false,
+      isUrl: false,
+      originalUrl,
+      language,
+      units,
+    };
+  },
+});
+
+// End step for formatting final output
+const endStep = createStep({
+  id: "end",
+  description: "Final step that formats the output",
+  inputSchema: z.object({
+    route: z
+      .enum(["social", "normal", "error"])
+      .describe("The processing route"),
+    result: z.string().describe("The final result"),
+    recipeData: z.string().optional().describe("The recipe data if any"),
+    isRecipe: z.boolean().describe("Whether recipe was found"),
+    isSocial: z.boolean().describe("Whether from social provider"),
+    provider: z.string().optional().describe("Social provider name"),
+    isUrl: z.boolean().describe("Whether input was URL"),
+    originalUrl: z.string().optional().describe("Original URL"),
+    recipeName: z.string().optional(),
+    timeMinutes: z.number().optional(),
+    servesPeople: z.number().optional(),
+    makesItems: z.string().optional(),
+    recipeLanguage: z.string().optional(),
+    unitsLength: z.string().optional(),
+    unitsLiquid: z.string().optional(),
+    unitsWeight: z.string().optional(),
+    language: z.string().optional(),
+    units: z.string().optional(),
+  }),
+  outputSchema: z.object({
+    result: z.string().describe("Final formatted result"),
+    recipeData: z.string().optional().describe("The recipe data if found"),
     isUrl: z.boolean().describe("Whether the input was a valid URL"),
     isRecipe: z.boolean().describe("Whether recipe data was found"),
     isSocial: z
@@ -764,169 +927,25 @@ const routingStep = createStep({
       throw new Error("Input data not found");
     }
 
-    const {
-      result,
-      isSocial,
-      provider,
-      displayName,
-      isUrl,
-      originalUrl,
-      language,
-      units,
-    } = inputData;
-
-    // Handle social provider routing
-    if (result === "route_to_social" && isSocial && provider && displayName) {
-      return {
-        result: `this url is from ${displayName}`,
-        isUrl: true,
-        isRecipe: false,
-        isSocial: true,
-        provider: displayName,
-        originalUrl,
-        language,
-        units,
-      };
-    }
-
-    // Handle invalid URL case
-    if (result === "this is not a url") {
-      return {
-        result: "this is not a url",
-        isUrl: false,
-        isRecipe: false,
-        originalUrl,
-        language,
-        units,
-      };
-    }
-
-    // Handle normal URL processing flow
-    if (result === "route_to_normal" && isUrl && originalUrl) {
-      try {
-        // Fetch HTML content
-        const response = await fetch(originalUrl);
-        if (!response.ok) {
-          return {
-            result: `Failed to fetch URL: ${response.status} ${response.statusText}`,
-            isUrl: true,
-            isRecipe: false,
-            originalUrl,
-            language,
-            units,
-          };
-        }
-
-        const htmlContent = await response.text();
-
-        // Clean HTML and convert to markdown
-        const cleanedContent = cleanHtml(htmlContent, {
-          removeAttributes: true,
-          removeEmptyElements: true,
-          normalizeWhitespace: true,
-          removeComments: true,
-          convertToMarkdown: true,
-        });
-
-        // Use the recipe extraction agent
-        const agent = recipeExtractionAgent;
-        let prompt = `Please analyze the following markdown content and extract any recipe information. Remove all website noise and focus only on the recipe data:
-
-${cleanedContent}`;
-
-        if (language) {
-          prompt += `\n\nIMPORTANT: Please translate the entire recipe (title, ingredients, instructions, and all text) to ${language}.`;
-        }
-
-        if (units) {
-          prompt += `\n\nIMPORTANT: Please convert all ingredient measurements to ${units} units. Use accurate conversion factors (e.g., 1 cup flour ≈ 120g, 1 tablespoon ≈ 15ml).`;
-        }
-
-        const response_ai = await agent.generate([
-          { role: "user", content: prompt },
-        ]);
-
-        const extractedContent = response_ai.text.trim();
-        const isRecipe = extractedContent !== "this is not a recipe";
-
-        // Parse structured metadata if this is a recipe
-        let recipeName: string | undefined;
-        let timeMinutes: number | undefined;
-        let servesPeople: number | undefined;
-        let makesItems: string | undefined;
-        let cleanedRecipeData = extractedContent;
-
-        const recipeLanguage = language || undefined;
-        const unitsLength = units
-          ? parseUnitsCategory(units, "length")
-          : undefined;
-        const unitsLiquid = units
-          ? parseUnitsCategory(units, "liquid")
-          : undefined;
-        const unitsWeight = units
-          ? parseUnitsCategory(units, "weight")
-          : undefined;
-
-        if (isRecipe) {
-          const metadataMatch = extractedContent.match(
-            /---RECIPE_METADATA---([\s\S]*?)---END_METADATA---/
-          );
-          if (metadataMatch) {
-            const metadataSection = metadataMatch[1];
-
-            const nameMatch = metadataSection.match(/NAME:\s*(.+)/);
-            const timeMatch = metadataSection.match(/TIME_MINUTES:\s*(\d+)/);
-            const servesMatch = metadataSection.match(/SERVES_PEOPLE:\s*(\d+)/);
-            const makesMatch = metadataSection.match(/MAKES_ITEMS:\s*(.+)/);
-
-            recipeName = nameMatch ? nameMatch[1].trim() : undefined;
-            timeMinutes = timeMatch ? parseInt(timeMatch[1]) : undefined;
-            servesPeople = servesMatch ? parseInt(servesMatch[1]) : undefined;
-            makesItems = makesMatch ? makesMatch[1].trim() : undefined;
-
-            cleanedRecipeData = extractedContent
-              .replace(/---RECIPE_METADATA---[\s\S]*?---END_METADATA---\s*/, "")
-              .trim();
-          }
-        }
-
-        return {
-          result: extractedContent,
-          recipeData: isRecipe ? cleanedRecipeData : undefined,
-          isUrl: true,
-          isRecipe,
-          originalUrl,
-          recipeName,
-          timeMinutes,
-          servesPeople,
-          makesItems,
-          recipeLanguage,
-          unitsLength,
-          unitsLiquid,
-          unitsWeight,
-          language,
-          units,
-        };
-      } catch (error) {
-        return {
-          result: `Error processing URL: ${error instanceof Error ? error.message : "Unknown error"}`,
-          isUrl: true,
-          isRecipe: false,
-          originalUrl,
-          language,
-          units,
-        };
-      }
-    }
-
-    // Fallback case
+    // Just pass through all the data, removing the route field
     return {
-      result: "Unknown routing error",
-      isUrl: false,
-      isRecipe: false,
-      originalUrl,
-      language,
-      units,
+      result: inputData.result,
+      recipeData: inputData.recipeData,
+      isUrl: inputData.isUrl,
+      isRecipe: inputData.isRecipe,
+      isSocial: inputData.isSocial,
+      provider: inputData.provider,
+      originalUrl: inputData.originalUrl,
+      recipeName: inputData.recipeName,
+      timeMinutes: inputData.timeMinutes,
+      servesPeople: inputData.servesPeople,
+      makesItems: inputData.makesItems,
+      recipeLanguage: inputData.recipeLanguage,
+      unitsLength: inputData.unitsLength,
+      unitsLiquid: inputData.unitsLiquid,
+      unitsWeight: inputData.unitsWeight,
+      language: inputData.language,
+      units: inputData.units,
     };
   },
 });
@@ -1010,7 +1029,11 @@ const urlProcessorWorkflow = createWorkflow({
   }),
 })
   .then(socialProviderCheckStep)
-  .then(routingStep);
+  .then(routerStep)
+  .then(processUrlStep)
+  .then(cleanAndConvertStep)
+  .then(recipeExtractionStep)
+  .then(endStep);
 
 urlProcessorWorkflow.commit();
 
