@@ -3,8 +3,6 @@ import { PinoLogger } from "@mastra/loggers";
 import { LibSQLStore } from "@mastra/libsql";
 import { recipeExtractorWorkflow } from "./workflows/recipe-extractor-workflow";
 import { recipeExtractionAgent, imageExtractionAgent } from "./agents";
-import { RecipeExtractorRequest } from "../types/recipe-extractor-types";
-import { constructUnitsString } from "../utils/unitsUtils";
 import {
   healthCheckHandler,
   recipeExtractorHandler,

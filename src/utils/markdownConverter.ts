@@ -2,62 +2,24 @@
  * Markdown Converter Service
  *
  * This module provides HTML to Markdown conversion functionality
- * using the Turndown library with custom configurations.
+ * using the node-html-markdown library with custom configurations.
  */
 
-import TurndownService from "turndown";
+import { NodeHtmlMarkdown, NodeHtmlMarkdownOptions } from "node-html-markdown";
 
 // Initialize the markdown converter with custom options for better output
-const markdownConverter = new TurndownService({
-  headingStyle: "atx", // Use # style headings
-  hr: "---", // Horizontal rule style
-  bulletListMarker: "-", // Use - for unordered lists
+const markdownConverter = new NodeHtmlMarkdown({
+  bulletMarker: "-", // Use - for unordered lists
   codeBlockStyle: "fenced", // Use ``` for code blocks
   emDelimiter: "*", // Use * for emphasis
   strongDelimiter: "**", // Use ** for strong/bold
-  linkStyle: "inlined", // Use inline links [text](url)
+  strikeDelimiter: "~~", // Use ~~ for strikethrough
+  maxConsecutiveNewlines: 3, // Limit consecutive newlines
+  useInlineLinks: true, // Use inline links [text](url)
 });
 
-// Add custom rule to handle empty paragraphs
-markdownConverter.addRule("removeEmptyParagraphs", {
-  filter: function (node) {
-    return (
-      node.nodeName === "P" &&
-      (!node.textContent || node.textContent.trim() === "")
-    );
-  },
-  replacement: function () {
-    return "";
-  },
-});
-
-// Add custom rule to improve spacing around headings
-markdownConverter.addRule("improveHeadingSpacing", {
-  filter: ["h1", "h2", "h3", "h4", "h5", "h6"],
-  replacement: function (content, node) {
-    const level = Number(node.nodeName.charAt(1));
-    const prefix = "#".repeat(level);
-    // Add extra newline before headings for better readability
-    return "\n\n" + prefix + " " + content + "\n\n";
-  },
-});
-
-// Add custom rule to ensure images are properly converted to markdown
-markdownConverter.addRule("forceImageConversion", {
-  filter: function (node) {
-    return node.nodeName === "IMG";
-  },
-  replacement: function (content, node) {
-    const element = node as Element;
-    const src = element.getAttribute("src");
-    const alt = element.getAttribute("alt") || "";
-    
-    if (src) {
-      return `\n![${alt}](${src})\n`;
-    }
-    return "";
-  },
-});
+// Note: node-html-markdown has built-in handling for most cases we were customizing
+// Custom translators can be added if needed, but the library's defaults are quite good
 
 /**
  * Converts HTML string to Markdown format
@@ -66,29 +28,46 @@ markdownConverter.addRule("forceImageConversion", {
  * @returns Markdown formatted string
  */
 export function convertHtmlToMarkdown(html: string): string {
-  return markdownConverter.turndown(html);
+  return markdownConverter.translate(html);
 }
 
 /**
- * Configures the markdown converter with custom options
+ * Creates a new markdown converter instance with custom options
  *
- * @param options - Turndown service options to override defaults
+ * @param options - NodeHtmlMarkdown options to override defaults
+ * @returns New NodeHtmlMarkdown instance
  */
-export function configureMarkdownConverter(
-  options: Partial<TurndownService.Options>
-): void {
-  Object.assign(markdownConverter.options, options);
+export function createCustomMarkdownConverter(
+  options: Partial<NodeHtmlMarkdownOptions>
+): NodeHtmlMarkdown {
+  const combinedOptions = {
+    bulletMarker: "-",
+    codeBlockStyle: "fenced" as const,
+    emDelimiter: "*",
+    strongDelimiter: "**",
+    strikeDelimiter: "~~",
+    maxConsecutiveNewlines: 3,
+    useInlineLinks: true,
+    ...options,
+  };
+  return new NodeHtmlMarkdown(combinedOptions);
 }
 
 /**
- * Adds a custom conversion rule to the markdown converter
+ * Converts HTML to Markdown using a custom converter instance
  *
- * @param name - Name of the rule
- * @param rule - The rule configuration
+ * @param html - The HTML string to convert
+ * @param options - Custom options for this conversion
+ * @returns Markdown formatted string
  */
-export function addMarkdownConversionRule(
-  name: string,
-  rule: TurndownService.Rule
-): void {
-  markdownConverter.addRule(name, rule);
+export function convertHtmlToMarkdownWithOptions(
+  html: string,
+  options: Partial<NodeHtmlMarkdownOptions>
+): string {
+  const customConverter = createCustomMarkdownConverter(options);
+  return customConverter.translate(html);
 }
+
+// Note: For advanced custom translators, create a new NodeHtmlMarkdown instance
+// with custom translators passed to the constructor:
+// const customConverter = new NodeHtmlMarkdown(options, customTranslators, customCodeBlockTranslators);
