@@ -42,6 +42,23 @@ markdownConverter.addRule("improveHeadingSpacing", {
   },
 });
 
+// Add custom rule to ensure images are properly converted to markdown
+markdownConverter.addRule("forceImageConversion", {
+  filter: function (node) {
+    return node.nodeName === "IMG";
+  },
+  replacement: function (content, node) {
+    const element = node as Element;
+    const src = element.getAttribute("src");
+    const alt = element.getAttribute("alt") || "";
+    
+    if (src) {
+      return `\n![${alt}](${src})\n`;
+    }
+    return "";
+  },
+});
+
 /**
  * Converts HTML string to Markdown format
  *

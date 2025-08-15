@@ -3,7 +3,7 @@
  *
  * This utility provides a string-based HTML cleaning function that:
  * - Removes all scripts, styles, and noscript elements
- * - Strips all HTML attributes from elements
+ * - Strips all HTML attributes from elements (except src and alt on img tags)
  * - Removes comments and ALL empty elements
  * - Normalizes whitespace for clean text content
  * - Optionally converts HTML to Markdown format
@@ -131,15 +131,25 @@ function removeHtmlComments(html: string): string {
 }
 
 /**
- * Removes all attributes from HTML elements using regex, except src attributes on img tags
+ * Removes all attributes from HTML elements using regex, except src and alt attributes on img tags
  */
 function removeAllAttributes(html: string): string {
   return html.replace(/<([a-zA-Z][a-zA-Z0-9]*)[^>]*>/g, (match, tagName) => {
-    // For img tags, preserve only the src attribute
+    // For img tags, preserve src and alt attributes
     if (tagName.toLowerCase() === "img") {
       const srcMatch = match.match(/src\s*=\s*["']([^"']*)["']/i);
+      const altMatch = match.match(/alt\s*=\s*["']([^"']*)["']/i);
+      
+      let attributes = "";
       if (srcMatch) {
-        return `<${tagName} src="${srcMatch[1]}">`;
+        attributes += ` src="${srcMatch[1]}"`;
+      }
+      if (altMatch) {
+        attributes += ` alt="${altMatch[1]}"`;
+      }
+      
+      if (attributes) {
+        return `<${tagName}${attributes} />`;
       }
     }
     // For all other tags, remove all attributes
@@ -163,7 +173,7 @@ function normalizeWhitespace_(html: string): string {
 }
 
 /**
- * Removes empty HTML elements using regex
+ * Removes empty HTML elements using regex, but preserves self-closing elements like img
  * This function runs multiple passes to handle nested empty elements
  */
 function removeEmptyElements_(html: string): string {
@@ -176,11 +186,12 @@ function removeEmptyElements_(html: string): string {
 
     // Remove empty elements with no content (self-closing or with only whitespace)
     // This regex matches opening tag, optional whitespace, and closing tag
-    result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)>\s*<\/\1>/g, "");
+    // Exclude self-closing elements like img, br, hr, input, etc.
+    result = result.replace(/<(?!img|br|hr|input|meta|link|area|base|col|embed|source|track|wbr)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>\s*<\/\1>/gi, "");
 
     // Remove elements that contain only whitespace or other empty elements
     // This is a simplified approach - for more complex cases, multiple passes help
-    result = result.replace(/<([a-zA-Z][a-zA-Z0-9]*)>\s*<\/\1>/g, "");
+    result = result.replace(/<(?!img|br|hr|input|meta|link|area|base|col|embed|source|track|wbr)([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>\s*<\/\1>/gi, "");
   } while (result.length < previousLength); // Continue until no more changes
 
   return result;

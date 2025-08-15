@@ -13,10 +13,11 @@ const recipeExtractionAgent = new Agent({
 1. Analyze the provided markdown content for recipe information
 2. If you find a recipe, extract ONLY the recipe data including: title, ingredients, instructions, cooking time, servings, etc.
 3. Remove all website noise like advertisements, navigation, comments, related articles, etc.
-4. Convert the recipe to the specified language if provided (translate all text including title, ingredients, and instructions)
-5. Convert ingredient measurements to the specified units if provided (e.g., convert cups to grams, tablespoons to milliliters, etc.)
-6. Format the recipe in a clean, structured markdown format with structured metadata
-7. If no recipe is found in the content, respond with exactly: "this is not a recipe"
+4. PRESERVE recipe images that show the dish, ingredients, or cooking steps - include them in markdown format ![alt](url)
+5. Convert the recipe to the specified language if provided (translate all text including title, ingredients, and instructions)
+6. Convert ingredient measurements to the specified units if provided (e.g., convert cups to grams, tablespoons to milliliters, etc.)
+7. Format the recipe in a clean, structured markdown format with structured metadata
+8. If no recipe is found in the content, respond with exactly: "this is not a recipe"
 
 OUTPUT FORMAT REQUIREMENTS:
 You MUST start your response with a structured metadata section using this exact format:
@@ -37,6 +38,9 @@ Then follow with the full recipe in markdown format including:
 - Include "**Serves:** X people" where X is the number of people the recipe serves
 - If the recipe makes individual items (like cupcakes, muffins, cookies, etc.), also include "**Makes:** X items" where X is the number of individual pieces
 - If serving information is not available in the source, make a reasonable estimate based on ingredient quantities
+- Include relevant recipe images throughout the recipe (main dish photo, ingredient photos, step-by-step cooking images, etc.)
+- Place the main recipe image near the top after the title and serving information
+- Include step images inline with cooking instructions where appropriate
 
 METADATA EXTRACTION RULES:
 - NAME: Extract the exact recipe title/name
@@ -49,10 +53,13 @@ METADATA EXTRACTION RULES:
 - UNITS_WEIGHT: Target weight units requested by the user (extract from units parameter), or "N/A" if not specified
 
 IMPORTANT INSTRUCTIONS:
-- If a target language is specified, translate ALL text in the recipe to that language
+- If a target language is specified, translate ALL text in the recipe to that language (including image alt text descriptions)
 - If target units are specified, convert ALL measurements in ingredients to those units (use appropriate conversion factors)
 - Maintain the original recipe structure and formatting
 - Focus only on the actual recipe content and ignore everything else on the page
+- PRESERVE ALL RECIPE IMAGES: Include any images that show the recipe, ingredients, cooking steps, or final dish in markdown format ![alt](url)
+- Recipe images are valuable content and should be included in the final output - do NOT remove them
+- When translating, also translate the alt text of images to the target language while keeping the image URLs unchanged
 - Be accurate with unit conversions (e.g., 1 cup flour ≈ 120g, 1 tablespoon ≈ 15ml)
 - ALWAYS include serving information even if you need to estimate it
 - ALWAYS provide the structured metadata section first`,
@@ -785,7 +792,7 @@ const cleanAndConvertStep = createStep({
       try {
         const cleanedContent = cleanHtml(htmlContent, {
           removeAttributes: true,
-          removeEmptyElements: true,
+          removeEmptyElements: false, // Keep this false to preserve img tags
           normalizeWhitespace: true,
           removeComments: true,
           convertToMarkdown: true,
