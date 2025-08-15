@@ -4,6 +4,18 @@
  * Central export point for all utility functions to simplify imports
  */
 
+// HTML and Markdown utilities
+export { cleanHtml } from "./htmlCleaner";
+
+// URL utilities
+export { isValidUrl, detectSocialProvider } from "./urlUtils";
+
+// Language utilities
+export { getLanguageISOCode } from "./languageUtils";
+
+// Units utilities
+export { parseUnitsCategory } from "./unitsUtils";
+
 /**
  * Cleans a URL by removing all query parameters
  * @param url - The URL to clean
