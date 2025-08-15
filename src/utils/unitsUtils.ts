@@ -1,3 +1,5 @@
+import { RecipeExtractorRequest } from "../types/recipe-extractor-types";
+
 // Function to parse user's units request into specific categories
 export function parseUnitsCategory(
   units: string,
@@ -49,14 +51,7 @@ export function parseUnitsCategory(
       "lb",
       "lbs",
     ],
-    temperature: [
-      "celsius",
-      "c",
-      "fahrenheit",
-      "f",
-      "kelvin",
-      "k",
-    ],
+    temperature: ["celsius", "c", "fahrenheit", "f", "kelvin", "k"],
   };
 
   // Check if the units string contains any units from the requested category
@@ -82,4 +77,18 @@ export function parseUnitsCategory(
   }
 
   return undefined;
+}
+
+// Helper function to construct units string from individual unit parameters
+export function constructUnitsString(
+  req: RecipeExtractorRequest
+): string | undefined {
+  const units: string[] = [];
+
+  if (req.weightUnit) units.push(req.weightUnit);
+  if (req.liquidUnit) units.push(req.liquidUnit);
+  if (req.lengthUnit) units.push(req.lengthUnit);
+  if (req.temperatureUnit) units.push(req.temperatureUnit);
+
+  return units.length > 0 ? units.join(" ") : undefined;
 }
