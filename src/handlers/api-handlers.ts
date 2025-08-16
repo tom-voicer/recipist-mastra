@@ -1,7 +1,9 @@
 import { Context } from "hono";
 import { RecipeExtractorRequest } from "../types/recipe-extractor-types";
+import { WorkflowData } from "../types/supabase-types";
 import { constructUnitsString } from "../utils/unitsUtils";
 import { authenticateRequest } from "../utils/authUtils";
+import { saveRecipeToDatabase } from "../utils/supabase-utils";
 import { Mastra } from "@mastra/core";
 
 /**
@@ -51,14 +53,36 @@ export async function recipeExtractorHandler(c: Context, mastra: Mastra) {
       inputData: workflowInput,
     });
 
-    return c.json({
-      success: true,
-      data: result,
-      user: {
-        id: user.id,
-        email: user.email,
-      },
-    });
+    // Save recipe to database only if workflow succeeded
+    if (result.status === "success") {
+      // Extract the actual workflow result data
+      const workflowData = result.result as WorkflowData;
+
+      // Save to database using utility function
+      const saveResult = await saveRecipeToDatabase(workflowData, user.id);
+
+      return c.json({
+        success: true,
+        data: result,
+        savedRecipe: saveResult.success ? saveResult.data : null,
+        dbError: saveResult.success ? undefined : saveResult.error,
+        user: {
+          id: user.id,
+          email: user.email,
+        },
+      });
+    } else {
+      // Workflow failed, don't save to database but still return the result
+      return c.json({
+        success: false,
+        data: result,
+        savedRecipe: null,
+        user: {
+          id: user.id,
+          email: user.email,
+        },
+      });
+    }
   } catch (error) {
     console.error("Recipe extraction error:", error);
     return c.json(
