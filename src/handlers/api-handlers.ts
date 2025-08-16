@@ -1,6 +1,7 @@
 import { Context } from "hono";
 import { RecipeExtractorRequest } from "../types/recipe-extractor-types";
 import { constructUnitsString } from "../utils/unitsUtils";
+import { authenticateRequest } from "../utils/authUtils";
 import { Mastra } from "@mastra/core";
 
 /**
@@ -10,6 +11,19 @@ import { Mastra } from "@mastra/core";
  */
 export async function recipeExtractorHandler(c: Context, mastra: Mastra) {
   try {
+    // Extract and verify authentication token
+    const authHeader = c.req.header("Authorization");
+    const user = await authenticateRequest(authHeader);
+
+    if (!user) {
+      return c.json(
+        { error: "Unauthorized: Invalid or missing authentication token" },
+        401
+      );
+    }
+
+    console.log(`Authenticated user: ${user.email} (ID: ${user.id})`);
+
     const body = (await c.req.json()) as RecipeExtractorRequest;
 
     // Validate required fields
@@ -40,6 +54,10 @@ export async function recipeExtractorHandler(c: Context, mastra: Mastra) {
     return c.json({
       success: true,
       data: result,
+      user: {
+        id: user.id,
+        email: user.email,
+      },
     });
   } catch (error) {
     console.error("Recipe extraction error:", error);
